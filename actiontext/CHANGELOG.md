@@ -1,3 +1,35 @@
+## Rails 6.1.0.rc1 (November 02, 2020) ##
+
+*   Declare `ActionText::FixtureSet.attachment` to generate an
+    `<action-text-attachment sgid="..."></action-text-attachment>` element with
+    a valid `sgid` attribute.
+
+    ```ruby
+    hello_world_review_content:
+      record: hello_world (Review)
+      name: content
+      body: <p><%= ActionText::FixtureSet.attachment("messages", :hello_world) %> is great!</p>
+    ```
+
+    *Sean Doyle*
+
+*   Locate `fill_in_rich_text_area` by `<label>` text
+
+    In addition to searching for `<trix-editor>` elements with the appropriate
+    `aria-label` attribute, also support locating elements that match the
+    corresponding `<label>` element's text.
+
+    *Sean Doyle*
+
+*   Be able to add a default value to `rich_text_area`.
+
+    ```ruby
+    form.rich_text_area :content, value: "<h1>Hello world</h1>"
+    #=> <input type="hidden" name="message[content]" id="message_content_trix_input_message_1" value="<h1>Hello world</h1>">
+    ```
+
+    *Paulo Ancheta*
+
 *   Add method to confirm rich text content existence by adding `?` after rich
     text attribute.
 

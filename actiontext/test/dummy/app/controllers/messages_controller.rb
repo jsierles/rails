@@ -1,4 +1,4 @@
-class MessagesController < ApplicationController
+class MessagesController < ActionController::Base
   before_action :set_message, only: [:show, :edit, :update, :destroy]
 
   # GET /messages
@@ -51,7 +51,7 @@ class MessagesController < ApplicationController
       @message = Message.find(params[:id])
     end
 
-    # Only allow a trusted parameter "white list" through.
+    # Only allow a trusted parameter list through.
     def message_params
       params.require(:message).permit(:subject, :content)
     end

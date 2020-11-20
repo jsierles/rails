@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "ostruct"
-
 # Blobs can have variants that are the result of a set of transformations applied to the original.
 #
 # Image variants can be used to create thumbnails, fixed-size avatars, or any other derivative image from the
@@ -56,7 +54,7 @@ require "ostruct"
 class ActiveStorage::Variant
   attr_reader :blob, :variation
   delegate :service, to: :blob
-  delegate :filename, :content_type, to: :specification
+  delegate :content_type, to: :variation
 
   def initialize(blob, variation_or_variation_key)
     @blob, @variation = blob, ActiveStorage::Variation.wrap(variation_or_variation_key)
@@ -91,6 +89,16 @@ class ActiveStorage::Variant
     service.download key, &block
   end
 
+  def filename
+    ActiveStorage::Filename.new "#{blob.filename.base}.#{variation.format}"
+  end
+
+  alias_method :content_type_for_serving, :content_type
+
+  def forced_disposition_for_serving #:nodoc:
+    nil
+  end
+
   # Returns the receiving variant. Allows ActiveStorage::Variant and ActiveStorage::Preview instances to be used interchangeably.
   def image
     self
@@ -103,29 +111,9 @@ class ActiveStorage::Variant
 
     def process
       blob.open do |input|
-        variation.transform(blob, input, format: format) do |output|
+        variation.transform(blob, input) do |output|
           service.upload(key, output, content_type: content_type)
         end
       end
     end
-
-
-    def specification
-      @specification ||=
-        if !blob.image? || ActiveStorage.web_image_content_types.include?(blob.content_type)
-          Specification.new \
-            filename: blob.filename,
-            content_type: blob.content_type,
-            format: nil
-        else
-          Specification.new \
-            filename: ActiveStorage::Filename.new("#{blob.filename.base}.png"),
-            content_type: "image/png",
-            format: "png"
-        end
-    end
-
-    delegate :format, to: :specification
-
-    class Specification < OpenStruct; end
 end

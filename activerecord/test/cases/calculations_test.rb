@@ -23,7 +23,7 @@ require "models/rating"
 require "support/stubs/strong_parameters"
 
 class CalculationsTest < ActiveRecord::TestCase
-  fixtures :companies, :accounts, :authors, :topics, :speedometers, :minivans, :books, :posts, :comments
+  fixtures :companies, :accounts, :authors, :author_addresses, :topics, :speedometers, :minivans, :books, :posts, :comments
 
   def test_should_sum_field
     assert_equal 318, Account.sum(:credit_limit)
@@ -130,6 +130,7 @@ class CalculationsTest < ActiveRecord::TestCase
       9 => 53
     }
     assert_equal expected, accounts.sum(:credit_limit)
+    assert_equal expected, accounts.merge!(accounts).uniq!(:group).sum(:credit_limit)
 
     expected = {
       [nil, nil] => 50,
@@ -138,7 +139,14 @@ class CalculationsTest < ActiveRecord::TestCase
       [6, 6] => 55,
       [9, 9] => 53
     }
-    assert_equal expected, accounts.merge!(accounts).maximum(:credit_limit)
+    message = <<-MSG.squish
+      `maximum` with group by duplicated fields does no longer affect to result in Rails 6.2.
+      To migrate to Rails 6.2's behavior, use `uniq!(:group)` to deduplicate group fields
+      (`accounts.uniq!(:group).maximum(:credit_limit)`).
+    MSG
+    assert_deprecated(message) do
+      assert_equal expected, accounts.merge!(accounts).maximum(:credit_limit)
+    end
 
     expected = {
       [nil, nil, nil, nil] => 50,
@@ -147,7 +155,14 @@ class CalculationsTest < ActiveRecord::TestCase
       [6, 6, 6, 6] => 50,
       [9, 9, 9, 9] => 53
     }
-    assert_equal expected, accounts.merge!(accounts).minimum(:credit_limit)
+    message = <<-MSG.squish
+      `minimum` with group by duplicated fields does no longer affect to result in Rails 6.2.
+      To migrate to Rails 6.2's behavior, use `uniq!(:group)` to deduplicate group fields
+      (`accounts.uniq!(:group).minimum(:credit_limit)`).
+    MSG
+    assert_deprecated(message) do
+      assert_equal expected, accounts.merge!(accounts).minimum(:credit_limit)
+    end
   end
 
   def test_should_generate_valid_sql_with_joins_and_group
@@ -683,12 +698,10 @@ class CalculationsTest < ActiveRecord::TestCase
     assert_equal 7, Company.includes(:contracts).sum(:developer_id)
   end
 
-  if current_adapter?(:Mysql2Adapter)
-    def test_from_option_with_specified_index
-      assert_equal Edge.count(:all), Edge.from("edges USE INDEX(unique_edge_index)").count(:all)
-      assert_equal Edge.where("sink_id < 5").count(:all),
-          Edge.from("edges USE INDEX(unique_edge_index)").where("sink_id < 5").count(:all)
-    end
+  def test_from_option_with_specified_index
+    edges = Edge.from("edges /*! USE INDEX(unique_edge_index) */")
+    assert_equal Edge.count(:all), edges.count(:all)
+    assert_equal Edge.where("sink_id < 5").count(:all), edges.where("sink_id < 5").count(:all)
   end
 
   def test_from_option_with_table_different_than_class
@@ -709,8 +722,7 @@ class CalculationsTest < ActiveRecord::TestCase
   end
 
   def test_pluck_with_empty_in
-    Topic.send(:load_schema)
-    assert_no_queries do
+    assert_queries(0) do
       assert_equal [], Topic.where(id: []).pluck(:id)
     end
   end
@@ -737,33 +749,35 @@ class CalculationsTest < ActiveRecord::TestCase
       [Date.new(2004, 4, 15), "reading"],
       [Date.new(2004, 4, 15), "read"],
     ]
-    actual =
-      Author.joins(:topics, :books).order(:"books.last_read")
-      .where.not("books.last_read": nil)
+    actual = AuthorAddress.joins(author: [:topics, :books]).order(:"books.last_read")
+      .where("books.last_read": [:unread, :reading, :read])
       .pluck(:"topics.last_read", :"books.last_read")
 
     assert_equal expected, actual
   end
 
   def test_pluck_type_cast_with_joins_without_table_name_qualified_column
-    assert_pluck_type_cast_without_table_name_qualified_column(Author.joins(:books))
+    assert_pluck_type_cast_without_table_name_qualified_column(AuthorAddress.joins(author: :books))
   end
 
   def test_pluck_type_cast_with_left_joins_without_table_name_qualified_column
-    assert_pluck_type_cast_without_table_name_qualified_column(Author.left_joins(:books))
+    assert_pluck_type_cast_without_table_name_qualified_column(AuthorAddress.left_joins(author: :books))
   end
 
   def test_pluck_type_cast_with_eager_load_without_table_name_qualified_column
-    assert_pluck_type_cast_without_table_name_qualified_column(Author.eager_load(:books))
+    assert_pluck_type_cast_without_table_name_qualified_column(AuthorAddress.eager_load(author: :books))
   end
 
-  def assert_pluck_type_cast_without_table_name_qualified_column(authors)
+  def assert_pluck_type_cast_without_table_name_qualified_column(author_addresses)
     expected = [
       [nil, "unread"],
       ["ebook", "reading"],
       ["paperback", "read"],
     ]
-    actual = authors.order(:last_read).where.not("books.last_read": nil).pluck(:format, :last_read)
+    actual = author_addresses.order(:last_read)
+      .where("books.last_read": [:unread, :reading, :read])
+      .pluck(:format, :last_read)
+
     assert_equal expected, actual
   end
   private :assert_pluck_type_cast_without_table_name_qualified_column
@@ -988,6 +1002,14 @@ class CalculationsTest < ActiveRecord::TestCase
     end
   end
 
+  def test_pluck_loaded_relation_aliased_attribute
+    companies = Company.order(:id).limit(3).load
+
+    assert_queries(0) do
+      assert_equal ["37signals", "Summit", "Microsoft"], companies.pluck(:new_name)
+    end
+  end
+
   def test_pick_one
     assert_equal "The First Topic", Topic.order(:id).pick(:heading)
     assert_no_queries do
@@ -1030,6 +1052,14 @@ class CalculationsTest < ActiveRecord::TestCase
 
     assert_queries 1 do
       assert_equal "37signals", companies.pick(Arel.sql("DISTINCT name"))
+    end
+  end
+
+  def test_pick_loaded_relation_aliased_attribute
+    companies = Company.order(:id).limit(3).load
+
+    assert_no_queries do
+      assert_equal "37signals", companies.pick(:new_name)
     end
   end
 

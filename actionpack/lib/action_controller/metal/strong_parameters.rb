@@ -252,7 +252,7 @@ module ActionController
     # to change these is to specify `always_permitted_parameters` in your
     # config. For instance:
     #
-    #    config.always_permitted_parameters = %w( controller action format )
+    #    config.action_controller.always_permitted_parameters = %w( controller action format )
     cattr_accessor :always_permitted_parameters, default: %w( controller action )
 
     class << self
@@ -855,7 +855,7 @@ module ActionController
     end
 
     def inspect
-      "<#{self.class} #{@parameters} permitted: #{@permitted}>"
+      "#<#{self.class} #{@parameters} permitted: #{@permitted}>"
     end
 
     def self.hook_into_yaml_loading # :nodoc:
@@ -983,7 +983,7 @@ module ActionController
       # --- Filtering ----------------------------------------------------------
       #
 
-      # This is a white list of permitted scalar types that includes the ones
+      # This is a list of permitted scalar types that includes the ones
       # supported in XML and JSON requests.
       #
       # This list is in particular used to filter ordinary requests, String goes

@@ -22,7 +22,6 @@ class TestERBTemplate < ActiveSupport::TestCase
     def initialize(*)
       super
       @output_buffer = "original"
-      @virtual_path = nil
     end
 
     def hello
@@ -35,7 +34,7 @@ class TestERBTemplate < ActiveSupport::TestCase
 
     def partial
       ActionView::Template.new(
-        "<%= @virtual_path %>",
+        "<%= @current_template.virtual_path %>",
         "partial",
         ERBHandler,
         virtual_path: "partial",
@@ -115,17 +114,10 @@ class TestERBTemplate < ActiveSupport::TestCase
   end
 
   def test_virtual_path
-    @template = new_template("<%= @virtual_path %>" \
+    @template = new_template("<%= @current_template.virtual_path %>" \
                              "<%= partial.render(self, {}) %>" \
-                             "<%= @virtual_path %>")
+                             "<%= @current_template.virtual_path %>")
     assert_equal "hellopartialhello", render
-  end
-
-  def test_refresh_is_deprecated
-    @template = new_template("Hello", virtual_path: "test/foo/bar", locals: [:key])
-    assert_deprecated do
-      assert_same @template, @template.refresh(@context)
-    end
   end
 
   def test_resulting_string_is_utf8

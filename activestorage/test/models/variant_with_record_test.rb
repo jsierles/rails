@@ -78,11 +78,11 @@ class ActiveStorage::VariantWithRecordTest < ActiveSupport::TestCase
     blob_duration = blob_metadata[:duration]
 
     opts = '-filter_complex "[0:v]setpts=2*PTS[v];[0:a]atempo=0.5[a]" -map "[v]" -map "[a]"'
-    variant = blob.variant(ffmpeg_opts: opts).processed
+    variant = blob.variant(ffmpeg_opts: opts, format: "mp4").processed
     assert_match(/video\.mp4/, variant.url)
 
     variant_metadata = extract_metadata_from(ActiveStorage::Blob.last)
-    assert_in_delta blob_duration*2, variant_metadata[:duration], 0.1
+    assert_in_delta blob_duration * 2, variant_metadata[:duration], 0.1
   ensure
     ActiveStorage.transformers = @orig_transformers
   end

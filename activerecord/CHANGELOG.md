@@ -1,3 +1,595 @@
+*   Build predicate conditions with objects that delegate `#id` and primary key:
+
+    ```ruby
+    class AdminAuthor
+      delegate_missing_to :@author
+
+      def initialize(author)
+        @author = author
+      end
+    end
+
+    Post.where(author: AdminAuthor.new(author))
+    ```
+
+    *Sean Doyle*
+
+*   Allow constructors (`build_association` and `create_association`) on
+    `has_one :through` associations.
+
+    *Santiago Perez Perret*
+
+## Rails 6.1.0.rc1 (November 02, 2020) ##
+
+*   Add `connected_to_many` API.
+
+    This API allows applications to connect to multiple databases at once without switching all of them or implementing a deeply nested stack.
+
+    Before:
+
+      AnimalsRecord.connected_to(role: :reading) do
+        MealsRecord.connected_to(role: :reading) do
+          Dog.first # read from animals replica
+          Dinner.first # read from meals replica
+          Person.first # read from primary writer
+        end
+      end
+
+    After:
+
+      ActiveRecord::Base.connected_to_many([AnimalsRecord, MealsRecord], role: :reading) do
+        Dog.first # read from animals replica
+        Dinner.first # read from meals replica
+        Person.first # read from primary writer
+      end
+
+    *Eileen M. Uchitelle*, *John Crepezzi*
+
+*   Add option to raise or log for `ActiveRecord::StrictLoadingViolationError`.
+
+    Some applications may not want to raise an error in production if using `strict_loading`. This would allow an application to set strict loading to log for the production environment while still raising in development and test environments.
+
+    Set `config.active_record.action_on_strict_loading_violation` to `:log` errors instead of raising.
+
+    *Eileen M. Uchitelle*
+
+*   Allow the inverse of a `has_one` association that was previously autosaved to be loaded.
+
+    Fixes #34255.
+
+    *Steven Weber*
+
+*   Optimise the length of index names for polymorphic references by using the reference name rather than the type and id column names.
+
+    Because the default behaviour when adding an index with multiple columns is to use all column names in the index name, this could frequently lead to overly long index names for polymorphic references which would fail the migration if it exceeded the database limit.
+
+    This change reduces the chance of that happening by using the reference name, e.g. `index_my_table_on_my_reference`.
+
+    Fixes #38655.
+
+    *Luke Redpath*
+
+*   MySQL: Uniqueness validator now respects default database collation,
+    no longer enforce case sensitive comparison by default.
+
+    *Ryuta Kamizono*
+
+*   Remove deprecated methods from `ActiveRecord::ConnectionAdapters::DatabaseLimits`.
+
+    `column_name_length`
+    `table_name_length`
+    `columns_per_table`
+    `indexes_per_table`
+    `columns_per_multicolumn_index`
+    `sql_query_length`
+    `joins_per_query`
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `ActiveRecord::ConnectionAdapters::AbstractAdapter#supports_multi_insert?`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `ActiveRecord::ConnectionAdapters::AbstractAdapter#supports_foreign_keys_in_create?`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `ActiveRecord::ConnectionAdapters::PostgreSQLAdapter#supports_ranges?`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `ActiveRecord::Base#update_attributes` and `ActiveRecord::Base#update_attributes!`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `migrations_path` argument in `ActiveRecord::ConnectionAdapter::SchemaStatements#assume_migrated_upto_version`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `config.active_record.sqlite3.represent_boolean_as_integer`.
+
+    *Rafael Mendonça França*
+
+*   `relation.create` does no longer leak scope to class level querying methods
+    in initialization block and callbacks.
+
+    Before:
+
+        User.where(name: "John").create do |john|
+          User.find_by(name: "David") # => nil
+        end
+
+    After:
+
+        User.where(name: "John").create do |john|
+          User.find_by(name: "David") # => #<User name: "David", ...>
+        end
+
+    *Ryuta Kamizono*
+
+*   Named scope chain does no longer leak scope to class level querying methods.
+
+        class User < ActiveRecord::Base
+          scope :david, -> { User.where(name: "David") }
+        end
+
+    Before:
+
+        User.where(name: "John").david
+        # SELECT * FROM users WHERE name = 'John' AND name = 'David'
+
+    After:
+
+        User.where(name: "John").david
+        # SELECT * FROM users WHERE name = 'David'
+
+    *Ryuta Kamizono*
+
+*   Remove deprecated methods from `ActiveRecord::DatabaseConfigurations`.
+
+    `fetch`
+    `each`
+    `first`
+    `values`
+    `[]=`
+
+    *Rafael Mendonça França*
+
+*   `where.not` now generates NAND predicates instead of NOR.
+
+     Before:
+
+         User.where.not(name: "Jon", role: "admin")
+         # SELECT * FROM users WHERE name != 'Jon' AND role != 'admin'
+
+     After:
+
+         User.where.not(name: "Jon", role: "admin")
+         # SELECT * FROM users WHERE NOT (name == 'Jon' AND role == 'admin')
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `ActiveRecord::Result#to_hash` method.
+
+    *Rafael Mendonça França*
+
+*   Deprecate `ActiveRecord::Base.allow_unsafe_raw_sql`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated support for using unsafe raw SQL in `ActiveRecord::Relation` methods.
+
+    *Rafael Mendonça França*
+
+*   Allow users to silence the "Rails couldn't infer whether you are using multiple databases..."
+    message using `config.active_record.suppress_multiple_database_warning`.
+
+    *Omri Gabay*
+
+*   Connections can be granularly switched for abstract classes when `connected_to` is called.
+
+    This change allows `connected_to` to switch a `role` and/or `shard` for a single abstract class instead of all classes globally. Applications that want to use the new feature need to set `config.active_record.legacy_connection_handling` to `false` in their application configuration.
+
+    Example usage:
+
+    Given an application we have a `User` model that inherits from `ApplicationRecord` and a `Dog` model that inherits from `AnimalsRecord`. `AnimalsRecord` and `ApplicationRecord` have writing and reading connections as well as shard `default`, `one`, and `two`.
+
+    ```ruby
+    ActiveRecord::Base.connected_to(role: :reading) do
+      User.first # reads from default replica
+      Dog.first # reads from default replica
+
+      AnimalsRecord.connected_to(role: :writing, shard: :one) do
+        User.first # reads from default replica
+        Dog.first # reads from shard one primary
+      end
+
+      User.first # reads from default replica
+      Dog.first # reads from default replica
+
+      ApplicationRecord.connected_to(role: :writing, shard: :two) do
+        User.first # reads from shard two primary
+        Dog.first # reads from default replica
+      end
+    end
+    ```
+
+    *Eileen M. Uchitelle*, *John Crepezzi*
+
+*   Allow double-dash comment syntax when querying read-only databases
+
+    *James Adam*
+
+*   Add `values_at` method.
+
+    Returns an array containing the values associated with the given methods.
+
+    ```ruby
+    topic = Topic.first
+    topic.values_at(:title, :author_name)
+    # => ["Budget", "Jason"]
+    ```
+
+    Similar to `Hash#values_at` but on an Active Record instance.
+
+    *Guillaume Briday*
+
+*   Fix `read_attribute_before_type_cast` to consider attribute aliases.
+
+    *Marcelo Lauxen*
+
+*   Support passing record to uniqueness validator `:conditions` callable:
+
+    ```ruby
+    class Article < ApplicationRecord
+      validates_uniqueness_of :title, conditions: ->(article) {
+        published_at = article.published_at
+        where(published_at: published_at.beginning_of_year..published_at.end_of_year)
+      }
+    end
+    ```
+
+    *Eliot Sykes*
+
+*   `BatchEnumerator#update_all` and `BatchEnumerator#delete_all` now return the
+    total number of rows affected, just like their non-batched counterparts.
+
+    ```ruby
+    Person.in_batches.update_all("first_name = 'Eugene'") # => 42
+    Person.in_batches.delete_all # => 42
+    ```
+
+    Fixes #40287.
+
+    *Eugene Kenny*
+
+*   Add support for PostgreSQL `interval` data type with conversion to
+    `ActiveSupport::Duration` when loading records from database and
+    serialization to ISO 8601 formatted duration string on save.
+    Add support to define a column in migrations and get it in a schema dump.
+    Optional column precision is supported.
+
+    To use this in 6.1, you need to place the next string to your model file:
+
+        attribute :duration, :interval
+
+    To keep old behavior until 6.2 is released:
+
+        attribute :duration, :string
+
+    Example:
+
+        create_table :events do |t|
+          t.string   :name
+          t.interval :duration
+        end
+
+        class Event < ApplicationRecord
+          attribute :duration, :interval
+        end
+
+        Event.create!(name: 'Rock Fest', duration: 2.days)
+        Event.last.duration # => 2 days
+        Event.last.duration.iso8601 # => "P2D"
+        Event.new(duration: 'P1DT12H3S').duration # => 1 day, 12 hours, and 3 seconds
+        Event.new(duration: '1 day') # Unknown value will be ignored and NULL will be written to database
+
+    *Andrey Novikov*
+
+*   Allow associations supporting the `dependent:` key to take `dependent: :destroy_async`.
+
+    ```ruby
+    class Account < ActiveRecord::Base
+        belongs_to :supplier, dependent: :destroy_async
+    end
+    ```
+
+    `:destroy_async` will enqueue a job to destroy associated records in the background.
+
+    *DHH*, *George Claghorn*, *Cory Gwin*, *Rafael Mendonça França*, *Adrianna Chang*
+
+*   Add `SKIP_TEST_DATABASE` environment variable to disable modifying the test database when `rails db:create` and `rails db:drop` are called.
+
+    *Jason Schweier*
+
+*   `connects_to` can only be called on `ActiveRecord::Base` or abstract classes.
+
+    Ensure that `connects_to` can only be called from `ActiveRecord::Base` or abstract classes. This protects the application from opening duplicate or too many connections.
+
+    *Eileen M. Uchitelle*, *John Crepezzi*
+
+*   All connection adapters `execute` now raises `ActiveRecord::ConnectionNotEstablished` rather than
+    `ActiveRecord::StatementInvalid` when they encounter a connection error.
+
+    *Jean Boussier*
+
+*   `Mysql2Adapter#quote_string` now raises `ActiveRecord::ConnectionNotEstablished` rather than
+    `ActiveRecord::StatementInvalid` when it can't connect to the MySQL server.
+
+    *Jean Boussier*
+
+*   Add support for check constraints that are `NOT VALID` via `validate: false` (PostgreSQL-only).
+
+    *Alex Robbin*
+
+*   Ensure the default configuration is considered primary or first for an environment
+
+    If a multiple database application provides a configuration named primary, that will be treated as default. In applications that do not have a primary entry, the default database configuration will be the first configuration for an environment.
+
+    *Eileen M. Uchitelle*
+
+*   Allow `where` references association names as joined table name aliases.
+
+    ```ruby
+    class Comment < ActiveRecord::Base
+      enum label: [:default, :child]
+      has_many :children, class_name: "Comment", foreign_key: :parent_id
+    end
+
+    # ... FROM comments LEFT OUTER JOIN comments children ON ... WHERE children.label = 1
+    Comment.includes(:children).where("children.label": "child")
+    ```
+
+    *Ryuta Kamizono*
+
+*   Support storing demodulized class name for polymorphic type.
+
+    Before Rails 6.1, storing demodulized class name is supported only for STI type
+    by `store_full_sti_class` class attribute.
+
+    Now `store_full_class_name` class attribute can handle both STI and polymorphic types.
+
+    *Ryuta Kamizono*
+
+*   Deprecate `rails db:structure:{load, dump}` tasks and extend
+    `rails db:schema:{load, dump}` tasks to work with either `:ruby` or `:sql` format,
+    depending on `config.active_record.schema_format` configuration value.
+
+    *fatkodima*
+
+*   Respect the `select` values for eager loading.
+
+    ```ruby
+    post = Post.select("UPPER(title) AS title").first
+    post.title # => "WELCOME TO THE WEBLOG"
+    post.body  # => ActiveModel::MissingAttributeError
+
+    # Rails 6.0 (ignore the `select` values)
+    post = Post.select("UPPER(title) AS title").eager_load(:comments).first
+    post.title # => "Welcome to the weblog"
+    post.body  # => "Such a lovely day"
+
+    # Rails 6.1 (respect the `select` values)
+    post = Post.select("UPPER(title) AS title").eager_load(:comments).first
+    post.title # => "WELCOME TO THE WEBLOG"
+    post.body  # => ActiveModel::MissingAttributeError
+    ```
+
+    *Ryuta Kamizono*
+
+*   Allow attribute's default to be configured but keeping its own type.
+
+    ```ruby
+    class Post < ActiveRecord::Base
+      attribute :written_at, default: -> { Time.now.utc }
+    end
+
+    # Rails 6.0
+    Post.type_for_attribute(:written_at) # => #<Type::Value ... precision: nil, ...>
+
+    # Rails 6.1
+    Post.type_for_attribute(:written_at) # => #<Type::DateTime ... precision: 6, ...>
+    ```
+
+    *Ryuta Kamizono*
+
+*   Allow default to be configured for Enum.
+
+    ```ruby
+    class Book < ActiveRecord::Base
+      enum status: [:proposed, :written, :published], _default: :published
+    end
+
+    Book.new.status # => "published"
+    ```
+
+    *Ryuta Kamizono*
+
+*   Deprecate YAML loading from legacy format older than Rails 5.0.
+
+    *Ryuta Kamizono*
+
+*   Added the setting `ActiveRecord::Base.immutable_strings_by_default`, which
+    allows you to specify that all string columns should be frozen unless
+    otherwise specified. This will reduce memory pressure for applications which
+    do not generally mutate string properties of Active Record objects.
+
+    *Sean Griffin*, *Ryuta Kamizono*
+
+*   Deprecate `map!` and `collect!` on `ActiveRecord::Result`.
+
+    *Ryuta Kamizono*
+
+*   Support `relation.and` for intersection as Set theory.
+
+    ```ruby
+    david_and_mary = Author.where(id: [david, mary])
+    mary_and_bob   = Author.where(id: [mary, bob])
+
+    david_and_mary.merge(mary_and_bob) # => [mary, bob]
+
+    david_and_mary.and(mary_and_bob) # => [mary]
+    david_and_mary.or(mary_and_bob)  # => [david, mary, bob]
+    ```
+
+    *Ryuta Kamizono*
+
+*   Merging conditions on the same column no longer maintain both conditions,
+    and will be consistently replaced by the latter condition in Rails 6.2.
+    To migrate to Rails 6.2's behavior, use `relation.merge(other, rewhere: true)`.
+
+    ```ruby
+    # Rails 6.1 (IN clause is replaced by merger side equality condition)
+    Author.where(id: [david.id, mary.id]).merge(Author.where(id: bob)) # => [bob]
+
+    # Rails 6.1 (both conflict conditions exists, deprecated)
+    Author.where(id: david.id..mary.id).merge(Author.where(id: bob)) # => []
+
+    # Rails 6.1 with rewhere to migrate to Rails 6.2's behavior
+    Author.where(id: david.id..mary.id).merge(Author.where(id: bob), rewhere: true) # => [bob]
+
+    # Rails 6.2 (same behavior with IN clause, mergee side condition is consistently replaced)
+    Author.where(id: [david.id, mary.id]).merge(Author.where(id: bob)) # => [bob]
+    Author.where(id: david.id..mary.id).merge(Author.where(id: bob)) # => [bob]
+    ```
+
+    *Ryuta Kamizono*
+
+*   Do not mark Postgresql MAC address and UUID attributes as changed when the assigned value only varies by case.
+
+    *Peter Fry*
+
+*   Resolve issue with insert_all unique_by option when used with expression index.
+
+    When the `:unique_by` option of `ActiveRecord::Persistence.insert_all` and
+    `ActiveRecord::Persistence.upsert_all` was used with the name of an expression index, an error
+    was raised. Adding a guard around the formatting behavior for the `:unique_by` corrects this.
+
+    Usage:
+
+    ```ruby
+    create_table :books, id: :integer, force: true do |t|
+      t.column :name, :string
+      t.index "lower(name)", unique: true
+    end
+
+    Book.insert_all [{ name: "MyTest" }], unique_by: :index_books_on_lower_name
+    ```
+
+    Fixes #39516.
+
+    *Austen Madden*
+
+*   Add basic support for CHECK constraints to database migrations.
+
+    Usage:
+
+    ```ruby
+    add_check_constraint :products, "price > 0", name: "price_check"
+    remove_check_constraint :products, name: "price_check"
+    ```
+
+    *fatkodima*
+
+*   Add `ActiveRecord::Base.strict_loading_by_default` and `ActiveRecord::Base.strict_loading_by_default=`
+    to enable/disable strict_loading mode by default for a model. The configuration's value is
+    inheritable by subclasses, but they can override that value and it will not impact parent class.
+
+    Usage:
+
+    ```ruby
+    class Developer < ApplicationRecord
+      self.strict_loading_by_default = true
+
+      has_many :projects
+    end
+
+    dev = Developer.first
+    dev.projects.first
+    # => ActiveRecord::StrictLoadingViolationError Exception: Developer is marked as strict_loading and Project cannot be lazily loaded.
+    ```
+
+    *bogdanvlviv*
+
+*   Deprecate passing an Active Record object to `quote`/`type_cast` directly.
+
+    *Ryuta Kamizono*
+
+*   Default engine `ENGINE=InnoDB` is no longer dumped to make schema more agnostic.
+
+    Before:
+
+    ```ruby
+    create_table "accounts", options: "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci", force: :cascade do |t|
+    end
+    ```
+
+    After:
+
+    ```ruby
+    create_table "accounts", charset: "utf8mb4", collation: "utf8mb4_0900_ai_ci", force: :cascade do |t|
+    end
+    ```
+
+    *Ryuta Kamizono*
+
+*   Added delegated type as an alternative to single-table inheritance for representing class hierarchies.
+    See ActiveRecord::DelegatedType for the full description.
+
+    *DHH*
+
+*   Deprecate aggregations with group by duplicated fields.
+
+    To migrate to Rails 6.2's behavior, use `uniq!(:group)` to deduplicate group fields.
+
+    ```ruby
+    accounts = Account.group(:firm_id)
+
+    # duplicated group fields, deprecated.
+    accounts.merge(accounts.where.not(credit_limit: nil)).sum(:credit_limit)
+    # => {
+    #   [1, 1] => 50,
+    #   [2, 2] => 60
+    # }
+
+    # use `uniq!(:group)` to deduplicate group fields.
+    accounts.merge(accounts.where.not(credit_limit: nil)).uniq!(:group).sum(:credit_limit)
+    # => {
+    #   1 => 50,
+    #   2 => 60
+    # }
+    ```
+
+    *Ryuta Kamizono*
+
+*   Deprecate duplicated query annotations.
+
+    To migrate to Rails 6.2's behavior, use `uniq!(:annotate)` to deduplicate query annotations.
+
+    ```ruby
+    accounts = Account.where(id: [1, 2]).annotate("david and mary")
+
+    # duplicated annotations, deprecated.
+    accounts.merge(accounts.rewhere(id: 3))
+    # SELECT accounts.* FROM accounts WHERE accounts.id = 3 /* david and mary */ /* david and mary */
+
+    # use `uniq!(:annotate)` to deduplicate annotations.
+    accounts.merge(accounts.rewhere(id: 3)).uniq!(:annotate)
+    # SELECT accounts.* FROM accounts WHERE accounts.id = 3 /* david and mary */
+    ```
+
+    *Ryuta Kamizono*
+
 *   Resolve conflict between counter cache and optimistic locking.
 
     Bump an Active Record instance's lock version after updating its counter
@@ -94,14 +686,14 @@
 
     *Ryuta Kamizono*
 
-*   Inspect time attributes with subsec.
+*   Inspect time attributes with subsec and time zone offset.
 
     ```ruby
     p Knot.create
-    => #<Knot id: 1, created_at: "2016-05-05 01:29:47.116928000">
+    => #<Knot id: 1, created_at: "2016-05-05 01:29:47.116928000 +0000">
     ```
 
-    *akinomaeni*
+    *akinomaeni*, *Jonathan Hefner*
 
 *   Deprecate passing a column to `type_cast`.
 
@@ -188,7 +780,7 @@
 
     *Eugene Kenny*
 
-*   Deprecate using `return`, `break` or `throw` to exit a transaction block.
+*   Deprecate using `return`, `break` or `throw` to exit a transaction block after writes.
 
     *Dylan Thacker-Smith*
 
@@ -619,10 +1211,6 @@
     To continue taking non-deterministic result, use `.take` / `.take!` instead.
 
     *Ryuta Kamizono*
-
-*   Ensure custom PK types are casted in through reflection queries.
-
-    *Gannon McGibbon*
 
 *   Preserve user supplied joins order as much as possible.
 

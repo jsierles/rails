@@ -9,9 +9,6 @@ module ActiveStorage
     # * ActiveStorage::Transformers::ImageProcessingTransformer:
     #   backed by ImageProcessing, a common interface for MiniMagick and ruby-vips
     #
-    # * ActiveStorage::Transformers::MiniMagickTransformer:
-    #   backed by MiniMagick, a wrapper around the ImageMagick CLI
-    #
     # To choose the transformer for a blob, Active Storage calls +accept?+ on each registered
     # transformer in order. It uses the first transformer for which +accept?+ returns true when
     # given the blob. In a Rails application, add or remove transformers by manipulating

@@ -161,7 +161,7 @@ class OptimisticLockingTest < ActiveRecord::TestCase
 
     p2.first_name = "sue"
     error = assert_raise(ActiveRecord::StaleObjectError) { p2.save! }
-    assert_equal(error.record.object_id, p2.object_id)
+    assert_same error.record, p2
   end
 
   def test_lock_new_when_explicitly_passing_nil
@@ -636,11 +636,11 @@ class OptimisticLockingWithSchemaChangeTest < ActiveRecord::TestCase
       add_counter_column_to(model)
       object = model.first
       assert_equal 0, object.test_count
-      assert_equal 0, object.send(model.locking_column)
+      assert_equal 0, object.public_send(model.locking_column)
       yield object.id
       object.reload
       assert_equal expected_count, object.test_count
-      assert_equal 1, object.send(model.locking_column)
+      assert_equal 1, object.public_send(model.locking_column)
     ensure
       remove_counter_column_from(model)
     end

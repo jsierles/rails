@@ -1,3 +1,148 @@
+*   Allow appended root routes to take precedence over internal welcome controller.
+
+    *Gannon McGibbon*
+
+
+## Rails 6.1.0.rc1 (November 02, 2020) ##
+
+*   Added `Railtie#server` hook called when Rails starts a server.
+    This is useful in case your application or a library needs to run
+    another process next to the Rails server. This is quite common in development
+    for instance to run the Webpack or the React server.
+
+    It can be used like this:
+
+    ```ruby
+      class MyRailtie < Rails::Railtie
+        server do
+          WebpackServer.run
+        end
+      end
+    ```
+
+    *Edouard Chin*
+
+*   Remove deprecated `rake dev:cache` tasks.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `rake routes` tasks.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `rake initializers` tasks.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated support for using the `HOST` environment variable to specify the server IP.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `server` argument from the rails server command.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `SOURCE_ANNOTATION_DIRECTORIES` environment variable support from `rails notes`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `connection` option in the `rails dbconsole` command.
+
+    *Rafael Mendonça França*
+
+*   Remove depreated `rake notes` tasks.
+
+    *Rafael Mendonça França*
+
+*   Return a 405 Method Not Allowed response when a request uses an unknown HTTP method.
+
+    Fixes #38998.
+
+    *Loren Norman*
+
+*   Make railsrc file location xdg-specification compliant
+
+    `rails new` will now look for the default `railsrc` file at
+    `$XDG_CONFIG_HOME/rails/railsrc` (or `~/.config/rails/railsrc` if
+    `XDG_CONFIG_HOME` is not set).  If this file does not exist, `rails new`
+    will fall back to `~/.railsrc`.
+
+    The fallback behaviour means this does not cause any breaking changes.
+
+    *Nick Wolf*
+
+*   Change the default logging level from :debug to :info to avoid inadvertent exposure of personally
+    identifiable information (PII) in production environments.
+
+    *Eric M. Payne*
+
+*   Automatically generate abstract class when using multiple databases.
+
+    When generating a scaffold for a multiple database application, Rails will now automatically generate the abstract class for the database when the database argument is passed. This abstract class will include the connection information for the writing configuration and any models generated for that database will automatically inherit from the abstract class.
+
+    Usage:
+
+    ```bash
+    $ bin/rails generate scaffold Pet name:string --database=animals
+    ```
+
+    Will create an abstract class for the animals connection.
+
+    ```ruby
+    class AnimalsRecord < ApplicationRecord
+      self.abstract_class = true
+
+      connects_to database: { writing: :animals }
+    end
+    ```
+
+    And generate a `Pet` model that inherits from the new `AnimalsRecord`:
+
+    ```ruby
+    class Pet < AnimalsRecord
+    end
+    ```
+
+    If you already have an abstract class and it follows a different pattern than Rails defaults, you can pass a parent class with the database argument.
+
+    ```bash
+    $ bin/rails generate scaffold Pet name:string --database=animals --parent=SecondaryBase
+    ```
+
+    This will ensure the model inherits from the `SecondaryBase` parent instead of `AnimalsRecord`
+
+    ```ruby
+    class Pet < SecondaryBase
+    end
+    ```
+
+    *Eileen M. Uchitelle*, *John Crepezzi*
+
+*   Accept params from url to prepopulate the Inbound Emails form in Rails conductor.
+
+    *Chris Oliver*
+
+*   Create a new rails app using a minimal stack.
+
+      `rails new cool_app --minimal`
+
+    All the following are excluded from your minimal stack:
+
+    - action_cable
+    - action_mailbox
+    - action_mailer
+    - action_text
+    - active_job
+    - active_storage
+    - bootsnap
+    - jbuilder
+    - spring
+    - system_tests
+    - turbolinks
+    - webpack
+
+    *Haroon Ahmed*, *DHH*
+
 *   Add default ENV variable option with BACKTRACE to turn off backtrace cleaning when debugging framework code in the
     generated config/initializers/backtrace_silencers.rb.
 
@@ -9,11 +154,6 @@
     during application boot in a safe way.
 
     *Haroon Ahmed*, *Xavier Noria*
-
-*   Use explicit `config/boot_with_spring.rb` boot file for bin/rails and bin/rake, which allows us to restrict Spring loading
-    to only test and development, and everywhere to be able to skip spring by passing UNSPRUNG=1 as an env variable.
-
-    *DHH*
 
 *   The `classic` autoloader starts its deprecation cycle.
 
@@ -142,7 +282,7 @@
 
     Previously:
 
-    ```
+    ```bash
     $ bin/rails g migration add_location_to_users location:references
     ```
 

@@ -97,6 +97,10 @@ config.active_storage.service = :test
 Continue reading for more information on the built-in service adapters (e.g.
 `Disk` and `S3`) and the configuration they require.
 
+NOTE: Configuration files that are environment-specific will take precedence:
+in production, for example, the `config/storage/production.yml` file (if existent)
+will take precedence over the `config/storage.yml` file.
+
 ### Disk Service
 
 Declare a Disk service in `config/storage.yml`:
@@ -120,7 +124,7 @@ amazon:
   bucket: ""
 ```
 
-Optionally provide a Hash of upload options:
+Optionally provide client and upload options:
 
 ```yaml
 amazon:
@@ -129,9 +133,13 @@ amazon:
   secret_access_key: ""
   region: ""
   bucket: ""
+  http_open_timeout: 0
+  http_read_timeout: 0
+  retry_limit: 0
   upload: 
     server_side_encryption: "" # 'aws:kms' or 'AES256'
 ```
+TIP: Set sensible client HTTP timeouts and retry limits for your application. In certain failure scenarios, the default AWS client configuration may cause connections to be held for up to several minutes and lead to request queuing.
 
 Add the [`aws-sdk-s3`](https://github.com/aws/aws-sdk-ruby) gem to your `Gemfile`:
 
@@ -147,7 +155,7 @@ and `region` keys in the example above. The S3 Service supports all of the
 authentication options described in the [AWS SDK documentation]
 (https://docs.aws.amazon.com/sdk-for-ruby/v3/developer-guide/setup-config.html).
 
-To connect to an S3-compatible object storage API such as Digital Ocean Spaces, provide the `endpoint`:
+To connect to an S3-compatible object storage API such as DigitalOcean Spaces, provide the `endpoint`:
 
 ```yaml
 digitalocean:
@@ -496,7 +504,7 @@ message.video.open do |file|
 end
 ```
 
-It's important to know that the file are not yet available in the `after_create` callback but in the `after_create_commit` only.
+It's important to know that the file is not yet available in the `after_create` callback but in the `after_create_commit` only.
 
 Analyzing Files
 ---------------
@@ -577,7 +585,7 @@ the box, Active Storage supports previewing videos and PDF documents.
 </ul>
 ```
 
-WARNING: Extracting previews requires third-party applications, FFmpeg for
+WARNING: Extracting previews requires third-party applications, FFmpeg v3.4+ for
 video and muPDF for PDFs, and on macOS also XQuartz and Poppler.
 These libraries are not provided by Rails. You must install them yourself to
 use the built-in previewers. Before you install and use third-party software,
@@ -604,7 +612,8 @@ directly from the client to the cloud.
     Using the npm package:
 
     ```js
-    require("@rails/activestorage").start()
+    import * as ActiveStorage from "@rails/activestorage"
+    ActiveStorage.start()
     ```
 
 2. Annotate file inputs with the direct upload URL.
@@ -641,19 +650,27 @@ No CORS configuration is required for the Disk service since it shares your appâ
 
 #### Example: S3 CORS configuration
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<CORSConfiguration xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
-<CORSRule>
-    <AllowedOrigin>https://www.example.com</AllowedOrigin>
-    <AllowedMethod>PUT</AllowedMethod>
-    <AllowedHeader>Origin</AllowedHeader>
-    <AllowedHeader>Content-Type</AllowedHeader>
-    <AllowedHeader>Content-MD5</AllowedHeader>
-    <AllowedHeader>Content-Disposition</AllowedHeader>
-    <MaxAgeSeconds>3600</MaxAgeSeconds>
-</CORSRule>
-</CORSConfiguration>
+```json
+[
+  {
+    "AllowedHeaders": [
+      "*"
+    ],
+    "AllowedMethods": [
+      "PUT"
+    ],
+    "AllowedOrigins": [
+      "https://www.example.com"
+    ],
+    "ExposeHeaders": [
+      "Origin",
+      "Content-Type",
+      "Content-MD5",
+      "Content-Disposition"
+    ],
+    "MaxAgeSeconds": 3600
+  }
+]
 ```
 
 #### Example: Google Cloud Storage CORS configuration

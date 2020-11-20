@@ -40,14 +40,16 @@ module ActiveRecord
       #   travel_back
       #   User.find_signed signed_id, purpose: :password_reset # => User.first
       def find_signed(signed_id, purpose: nil)
+        raise UnknownPrimaryKey.new(self) if primary_key.nil?
+
         if id = signed_id_verifier.verified(signed_id, purpose: combine_signed_id_purposes(purpose))
-          find_by id: id
+          find_by primary_key => id
         end
       end
 
-      # Works like +find_signed+, but will raise a +ActiveSupport::MessageVerifier::InvalidSignature+
+      # Works like +find_signed+, but will raise an +ActiveSupport::MessageVerifier::InvalidSignature+
       # exception if the +signed_id+ has either expired, has a purpose mismatch, is for another record,
-      # or has been tampered with. It will also raise a +ActiveRecord::RecordNotFound+ exception if
+      # or has been tampered with. It will also raise an +ActiveRecord::RecordNotFound+ exception if
       # the valid signed id can't find a record.
       #
       # === Examples
@@ -68,10 +70,13 @@ module ActiveRecord
       # Rails.application.key_generator. By default, it's SHA256 for the digest and JSON for the serialization.
       def signed_id_verifier
         @signed_id_verifier ||= begin
-          if signed_id_verifier_secret.nil?
+          secret = signed_id_verifier_secret
+          secret = secret.call if secret.respond_to?(:call)
+
+          if secret.nil?
             raise ArgumentError, "You must set ActiveRecord::Base.signed_id_verifier_secret to use signed ids"
           else
-            ActiveSupport::MessageVerifier.new signed_id_verifier_secret, digest: "SHA256", serializer: JSON
+            ActiveSupport::MessageVerifier.new secret, digest: "SHA256", serializer: JSON
           end
         end
       end
@@ -85,7 +90,7 @@ module ActiveRecord
 
       # :nodoc:
       def combine_signed_id_purposes(purpose)
-        [ name.underscore, purpose.to_s ].compact_blank.join("/")
+        [ base_class.name.underscore, purpose.to_s ].compact_blank.join("/")
       end
     end
 

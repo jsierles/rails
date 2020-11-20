@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "mimemagic"
+
 # A set of transformations that can be applied to a blob to create a variant. This class is exposed via
 # the ActiveStorage::Blob#variant method and should rarely be used directly.
 #
@@ -43,14 +45,28 @@ class ActiveStorage::Variation
     @transformations = transformations.deep_symbolize_keys
   end
 
+  def default_to(defaults)
+    self.class.new transformations.reverse_merge(defaults)
+  end
+
   # Accepts a File object, performs the +transformations+ against it, and
-  # saves the result into a temporary file. If +format+ is specified
-  # it will be the format of the result, otherwise the result
-  # retains the source format.
-  def transform(blob, file, format: nil, &block)
+  # saves the result into a temporary file.
+  def transform(blob, file, &block)
     ActiveSupport::Notifications.instrument("transform.active_storage") do
       transformer(blob).transform(file, format: format, &block)
     end
+  end
+
+  def format
+    transformations.fetch(:format, :png).tap do |format|
+      if MimeMagic.by_extension(format).nil?
+        raise ArgumentError, "Invalid variant format (#{format.inspect})"
+      end
+    end
+  end
+
+  def content_type
+    MimeMagic.by_extension(format).to_s
   end
 
   # Returns a signed key for all the +transformations+ that this variation was instantiated with.
@@ -64,7 +80,7 @@ class ActiveStorage::Variation
 
   private
     def transformer(blob)
-      transformer_class(blob).new(transformations)
+      transformer_class(blob).new(transformations.except(:format))
     end
 
     def transformer_class(blob)

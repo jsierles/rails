@@ -283,7 +283,7 @@ module ActiveRecord
       end
 
       def operation_over_aggregate_column(column, operation, distinct)
-        operation == "count" ? column.count(distinct) : column.send(operation)
+        operation == "count" ? column.count(distinct) : column.public_send(operation)
       end
 
       def execute_simple_calculation(operation, column_name, distinct) #:nodoc:
@@ -309,13 +309,23 @@ module ActiveRecord
 
         type_cast_calculated_value(result.cast_values.first, operation) do |value|
           type = column.try(:type_caster) ||
-            lookup_cast_type_from_join_dependencies(column_name.to_s, build_join_dependencies) || Type.default_value
+            lookup_cast_type_from_join_dependencies(column_name.to_s) || Type.default_value
           type.deserialize(value)
         end
       end
 
       def execute_grouped_calculation(operation, column_name, distinct) #:nodoc:
         group_fields = group_values
+        group_fields = group_fields.uniq if group_fields.size > 1
+
+        unless group_fields == group_values
+          ActiveSupport::Deprecation.warn(<<-MSG.squish)
+            `#{operation}` with group by duplicated fields does no longer affect to result in Rails 6.2.
+            To migrate to Rails 6.2's behavior, use `uniq!(:group)` to deduplicate group fields
+            (`#{klass.name&.tableize || klass.table_name}.uniq!(:group).#{operation}(#{column_name.inspect})`).
+          MSG
+          group_fields = group_values
+        end
 
         if group_fields.size == 1 && group_fields.first.respond_to?(:to_sym)
           association  = klass._reflect_on_association(group_fields.first)
@@ -378,7 +388,7 @@ module ActiveRecord
 
           result[key] = type_cast_calculated_value(row[column_alias], operation) do |value|
             type ||= column.try(:type_caster) ||
-              lookup_cast_type_from_join_dependencies(column_name.to_s, build_join_dependencies) || Type.default_value
+              lookup_cast_type_from_join_dependencies(column_name.to_s) || Type.default_value
             type.deserialize(value)
           end
         end
@@ -406,19 +416,10 @@ module ActiveRecord
         @klass.type_for_attribute(field_name, &block)
       end
 
-      def build_join_dependencies
-        join_dependencies = []
-        join_dependencies.unshift construct_join_dependency(
-          select_association_list(joins_values + left_outer_joins_values, join_dependencies), nil
-        )
-      end
-
-      def lookup_cast_type_from_join_dependencies(name, join_dependencies)
-        join_dependencies.each do |join_dependency|
-          join_dependency.each do |join|
-            type = join.base_klass.attribute_types.fetch(name, nil)
-            return type if type
-          end
+      def lookup_cast_type_from_join_dependencies(name, join_dependencies = build_join_dependencies)
+        each_join_dependencies(join_dependencies) do |join|
+          type = join.base_klass.attribute_types.fetch(name, nil)
+          return type if type
         end
         nil
       end

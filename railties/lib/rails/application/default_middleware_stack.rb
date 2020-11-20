@@ -13,10 +13,11 @@ module Rails
 
       def build_stack
         ActionDispatch::MiddlewareStack.new do |middleware|
-          middleware.use ::ActionDispatch::HostAuthorization, config.hosts, config.action_dispatch.hosts_response_app
+          middleware.use ::ActionDispatch::HostAuthorization, config.hosts, config.action_dispatch.hosts_response_app, **config.host_authorization
 
           if config.force_ssl
-            middleware.use ::ActionDispatch::SSL, **config.ssl_options
+            middleware.use ::ActionDispatch::SSL, **config.ssl_options,
+              ssl_default_redirect_status: config.action_dispatch.ssl_default_redirect_status
           end
 
           middleware.use ::Rack::Sendfile, config.action_dispatch.x_sendfile_header
@@ -43,7 +44,7 @@ module Rails
 
           middleware.use ::Rack::Runtime
           middleware.use ::Rack::MethodOverride unless config.api_only
-          middleware.use ::ActionDispatch::RequestId
+          middleware.use ::ActionDispatch::RequestId, header: config.action_dispatch.request_id_header
           middleware.use ::ActionDispatch::RemoteIp, config.action_dispatch.ip_spoofing_check, config.action_dispatch.trusted_proxies
 
           middleware.use ::Rails::Rack::Logger, config.log_tags
@@ -68,7 +69,7 @@ module Rails
 
           unless config.api_only
             middleware.use ::ActionDispatch::ContentSecurityPolicy::Middleware
-            middleware.use ::ActionDispatch::FeaturePolicy::Middleware
+            middleware.use ::ActionDispatch::PermissionsPolicy::Middleware
           end
 
           middleware.use ::Rack::Head

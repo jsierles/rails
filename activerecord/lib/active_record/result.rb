@@ -65,16 +65,10 @@ module ActiveRecord
       end
     end
 
-    def to_hash
-      ActiveSupport::Deprecation.warn(<<-MSG.squish)
-        `ActiveRecord::Result#to_hash` has been renamed to `to_a`.
-        `to_hash` is deprecated and will be removed in Rails 6.1.
-      MSG
-      to_a
-    end
-
     alias :map! :map
     alias :collect! :map
+    deprecate "map!": :map
+    deprecate "collect!": :map
 
     # Returns true if there are no records, otherwise false.
     def empty?
@@ -92,18 +86,9 @@ module ActiveRecord
       hash_rows[idx]
     end
 
-    # Returns the first record from the rows collection.
-    # If the rows collection is empty, returns +nil+.
-    def first
-      return nil if @rows.empty?
-      Hash[@columns.zip(@rows.first)]
-    end
-
     # Returns the last record from the rows collection.
-    # If the rows collection is empty, returns +nil+.
-    def last
-      return nil if @rows.empty?
-      Hash[@columns.zip(@rows.last)]
+    def last(n = nil)
+      n ? hash_rows.last(n) : hash_rows.last
     end
 
     def cast_values(type_overrides = {}) # :nodoc:

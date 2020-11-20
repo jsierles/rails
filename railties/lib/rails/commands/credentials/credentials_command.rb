@@ -93,12 +93,11 @@ module Rails
 
         def missing_credentials_message
           if credentials.key.nil?
-            "Missing '#{key_path}' to decrypt credentials. See `rails credentials:help`"
+            "Missing '#{key_path}' to decrypt credentials. See `bin/rails credentials:help`"
           else
-            "File '#{content_path}' does not exist. Use `rails credentials:edit` to change that."
+            "File '#{content_path}' does not exist. Use `bin/rails credentials:edit` to change that."
           end
         end
-
 
         def content_path
           @content_path ||= options[:environment] ? "config/credentials/#{options[:environment]}.yml.enc" : "config/credentials.yml.enc"
@@ -109,7 +108,7 @@ module Rails
         end
 
         def extract_environment_from_path(path)
-          available_environments.find { |env| path.include? env } if path.match?(/\.yml\.enc$/)
+          available_environments.find { |env| path.include? env } if path.end_with?(".yml.enc")
         end
 
         def encryption_key_file_generator

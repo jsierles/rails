@@ -33,14 +33,12 @@ module ActiveRecord
       valid_conn_param_keys = PG::Connection.conndefaults_hash.keys + [:requiressl]
       conn_params.slice!(*valid_conn_param_keys)
 
-      conn = PG.connect(conn_params)
-      ConnectionAdapters::PostgreSQLAdapter.new(conn, logger, conn_params, config)
-    rescue ::PG::Error => error
-      if error.message.include?(conn_params[:dbname])
-        raise ActiveRecord::NoDatabaseError
-      else
-        raise
-      end
+      ConnectionAdapters::PostgreSQLAdapter.new(
+        ConnectionAdapters::PostgreSQLAdapter.new_client(conn_params),
+        logger,
+        conn_params,
+        config,
+      )
     end
   end
 
@@ -74,6 +72,18 @@ module ActiveRecord
     # See https://www.postgresql.org/docs/current/static/libpq-envars.html .
     class PostgreSQLAdapter < AbstractAdapter
       ADAPTER_NAME = "PostgreSQL"
+
+      class << self
+        def new_client(conn_params)
+          PG.connect(conn_params)
+        rescue ::PG::Error => error
+          if conn_params && conn_params[:dbname] && error.message.include?(conn_params[:dbname])
+            raise ActiveRecord::NoDatabaseError
+          else
+            raise ActiveRecord::ConnectionNotEstablished, error.message
+          end
+        end
+      end
 
       ##
       # :singleton-method:
@@ -163,6 +173,10 @@ module ActiveRecord
       end
 
       def supports_foreign_keys?
+        true
+      end
+
+      def supports_check_constraints?
         true
       end
 
@@ -331,11 +345,6 @@ module ActiveRecord
         true
       end
 
-      def supports_ranges?
-        true
-      end
-      deprecate :supports_ranges?
-
       def supports_materialized_views?
         true
       end
@@ -464,6 +473,12 @@ module ActiveRecord
           return exception unless exception.respond_to?(:result)
 
           case exception.result.try(:error_field, PG::PG_DIAG_SQLSTATE)
+          when nil
+            if exception.message.match?(/connection is closed/i)
+              ConnectionNotEstablished.new(exception)
+            else
+              super
+            end
           when UNIQUE_VIOLATION
             RecordNotUnique.new(message, sql: sql, binds: binds)
           when FOREIGN_KEY_VIOLATION
@@ -531,7 +546,7 @@ module ActiveRecord
           m.register_type "uuid", OID::Uuid.new
           m.register_type "xml", OID::Xml.new
           m.register_type "tsvector", OID::SpecializedString.new(:tsvector)
-          m.register_type "macaddr", OID::SpecializedString.new(:macaddr)
+          m.register_type "macaddr", OID::Macaddr.new
           m.register_type "citext", OID::SpecializedString.new(:citext)
           m.register_type "ltree", OID::SpecializedString.new(:ltree)
           m.register_type "line", OID::SpecializedString.new(:line)
@@ -540,11 +555,6 @@ module ActiveRecord
           m.register_type "path", OID::SpecializedString.new(:path)
           m.register_type "polygon", OID::SpecializedString.new(:polygon)
           m.register_type "circle", OID::SpecializedString.new(:circle)
-
-          m.register_type "interval" do |_, _, sql_type|
-            precision = extract_precision(sql_type)
-            OID::SpecializedString.new(:interval, precision: precision)
-          end
 
           register_class_with_precision m, "time", Type::Time
           register_class_with_precision m, "timestamp", OID::DateTime
@@ -567,6 +577,11 @@ module ActiveRecord
             else
               OID::Decimal.new(precision: precision, scale: scale)
             end
+          end
+
+          m.register_type "interval" do |*args, sql_type|
+            precision = extract_precision(sql_type)
+            OID::Interval.new(precision: precision)
           end
 
           load_additional_types
@@ -651,6 +666,7 @@ module ActiveRecord
 
         def exec_no_cache(sql, name, binds)
           materialize_transactions
+          mark_transaction_written_if_write(sql)
 
           # make sure we carry over any changes to ActiveRecord::Base.default_timezone that have been
           # made since we established the connection
@@ -666,6 +682,7 @@ module ActiveRecord
 
         def exec_cache(sql, name, binds)
           materialize_transactions
+          mark_transaction_written_if_write(sql)
           update_typemap_for_default_timezone
 
           stmt_key = prepare_statement(sql, binds)
@@ -742,7 +759,7 @@ module ActiveRecord
         # Connects to a PostgreSQL server and sets up the adapter depending on the
         # connected server's characteristics.
         def connect
-          @connection = PG.connect(@connection_parameters)
+          @connection = self.class.new_client(@connection_parameters)
           configure_connection
           add_pg_encoders
           add_pg_decoders
@@ -771,6 +788,9 @@ module ActiveRecord
               variables["timezone"] = @local_tz
             end
           end
+
+          # Set interval output format to ISO 8601 for ease of parsing by ActiveSupport::Duration.parse
+          execute("SET intervalstyle = iso_8601", "SCHEMA")
 
           # SET statements from :variables config hash
           # https://www.postgresql.org/docs/current/static/sql-set.html
@@ -940,6 +960,7 @@ module ActiveRecord
         ActiveRecord::Type.register(:enum, OID::Enum, adapter: :postgresql)
         ActiveRecord::Type.register(:hstore, OID::Hstore, adapter: :postgresql)
         ActiveRecord::Type.register(:inet, OID::Inet, adapter: :postgresql)
+        ActiveRecord::Type.register(:interval, OID::Interval, adapter: :postgresql)
         ActiveRecord::Type.register(:jsonb, OID::Jsonb, adapter: :postgresql)
         ActiveRecord::Type.register(:money, OID::Money, adapter: :postgresql)
         ActiveRecord::Type.register(:point, OID::Point, adapter: :postgresql)

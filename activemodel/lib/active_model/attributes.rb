@@ -48,7 +48,7 @@ module ActiveModel
           ) do |temp_method_name, attr_name_expr|
             owner <<
               "def #{temp_method_name}(value)" <<
-              "  write_attribute(#{attr_name_expr}, value)" <<
+              "  _write_attribute(#{attr_name_expr}, value)" <<
               "end"
           end
         end
@@ -115,29 +115,18 @@ module ActiveModel
     end
 
     def freeze
-      @attributes = @attributes.clone.freeze
+      @attributes = @attributes.clone.freeze unless frozen?
       super
     end
 
     private
-      def write_attribute(attr_name, value)
-        name = attr_name.to_s
-        name = self.class.attribute_aliases[name] || name
-
-        @attributes.write_from_user(name, value)
-        value
+      def _write_attribute(attr_name, value)
+        @attributes.write_from_user(attr_name, value)
       end
+      alias :attribute= :_write_attribute
 
       def attribute(attr_name)
-        name = attr_name.to_s
-        name = self.class.attribute_aliases[name] || name
-
-        @attributes.fetch_value(name)
-      end
-
-      # Dispatch target for <tt>*=</tt> attribute methods.
-      def attribute=(attribute_name, value)
-        write_attribute(attribute_name, value)
+        @attributes.fetch_value(attr_name)
       end
   end
 end

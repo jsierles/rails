@@ -1,3 +1,70 @@
+## Rails 6.1.0.rc1 (November 02, 2020) ##
+
+*   Allow `ActionDispatch::HostAuthorization` to exclude specific requests.
+
+    Host Authorization checks can be skipped for specific requests. This allows for health check requests to be permitted for requests with missing or non-matching host headers.
+
+    *Chris Bisnett*
+
+*   Add `config.action_dispatch.request_id_header` to allow changing the name of
+    the unique X-Request-Id header
+
+    *Arlston Fernandes*
+
+*   Deprecate `config.action_dispatch.return_only_media_type_on_content_type`.
+
+    *Rafael Mendonça França*
+
+*   Change `ActionDispatch::Response#content_type` to return the full Content-Type header.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `ActionDispatch::Http::ParameterFilter`.
+
+    *Rafael Mendonça França*
+
+*   Added support for exclusive no-store Cache-Control header.
+
+    If `no-store` is set on Cache-Control header it is exclusive (all other cache directives are dropped).
+
+    *Chris Kruger*
+
+*   Catch invalid UTF-8 parameters for POST requests and respond with BadRequest.
+
+    Additionally, perform `#set_binary_encoding` in `ActionDispatch::Http::Request#GET` and
+    `ActionDispatch::Http::Request#POST` prior to validating encoding.
+
+    *Adrianna Chang*
+
+*   Allow `assert_recognizes` routing assertions to work on mounted root routes.
+
+    *Gannon McGibbon*
+
+*   Change default redirection status code for non-GET/HEAD requests to 308 Permanent Redirect for `ActionDispatch::SSL`.
+
+    *Alan Tan*, *Oz Ben-David*
+
+*   Fix `follow_redirect!` to follow redirection with same HTTP verb when following
+    a 308 redirection.
+
+    *Alan Tan*
+
+*   When multiple domains are specified for a cookie, a domain will now be
+    chosen only if it is equal to or is a superdomain of the request host.
+
+    *Jonathan Hefner*
+
+*   `ActionDispatch::Static` handles precompiled Brotli (.br) files.
+
+    Adds to existing support for precompiled gzip (.gz) files.
+    Brotli files are preferred due to much better compression.
+
+    When the browser requests /some.js with `Accept-Encoding: br`,
+    we check for public/some.js.br and serve that file, if present, with
+    `Content-Encoding: br` and `Vary: Accept-Encoding` headers.
+
+    *Ryan Edward Hall*, *Jeremy Daer*
+
 *   Add raise_on_missing_translations support for controllers.
 
     This configuration determines whether an error should be raised for missing translations.
@@ -67,7 +134,7 @@
     out of the box: the value has to be url-encoded and decoded to survive transport.
 
     Now, we generate Base64 urlsafe-encoded CSRF tokens, which are inherently safe
-    to transport.  Validation accepts both urlsafe tokens, and strict-encoded tokens
+    to transport. Validation accepts both urlsafe tokens, and strict-encoded tokens
     for backwards compatibility.
 
     *Scott Blum*
@@ -271,7 +338,7 @@
     Example global policy:
 
     ```ruby
-    Rails.application.config.feature_policy do |f|
+    Rails.application.config.permissions_policy do |f|
       f.camera      :none
       f.gyroscope   :none
       f.microphone  :none
@@ -285,7 +352,7 @@
 
     ```ruby
     class PagesController < ApplicationController
-      feature_policy do |p|
+      permissions_policy do |p|
         p.geolocation "https://example.com"
       end
     end

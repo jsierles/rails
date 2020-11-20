@@ -175,12 +175,15 @@ end
 # common test methods
 module RequestForgeryProtectionTests
   def setup
+    @old_urlsafe_csrf_tokens = ActionController::Base.urlsafe_csrf_tokens
+    ActionController::Base.urlsafe_csrf_tokens = true
     @token = Base64.urlsafe_encode64("railstestrailstestrailstestrails")
     @old_request_forgery_protection_token = ActionController::Base.request_forgery_protection_token
     ActionController::Base.request_forgery_protection_token = :custom_authenticity_token
   end
 
   def teardown
+    ActionController::Base.urlsafe_csrf_tokens = @old_urlsafe_csrf_tokens
     ActionController::Base.request_forgery_protection_token = @old_request_forgery_protection_token
   end
 
@@ -378,10 +381,25 @@ module RequestForgeryProtectionTests
   end
 
   def test_should_allow_post_with_strict_encoded_token
-    session[:_csrf_token] = Base64.strict_encode64("railstestrailstestrailstestrails")
-    @controller.stub :form_authenticity_token, @token do
-      assert_not_blocked { post :index, params: { custom_authenticity_token: @token } }
+    token_length = (ActionController::RequestForgeryProtection::AUTHENTICITY_TOKEN_LENGTH * 4.0 / 3).ceil
+    token_including_url_unsafe_chars = "+/".ljust(token_length, "A")
+    session[:_csrf_token] = token_including_url_unsafe_chars
+    @controller.stub :form_authenticity_token, token_including_url_unsafe_chars do
+      assert_not_blocked { post :index, params: { custom_authenticity_token: token_including_url_unsafe_chars } }
     end
+  end
+
+  def test_should_allow_post_with_urlsafe_token_when_migrating
+    config_before = ActionController::Base.urlsafe_csrf_tokens
+    ActionController::Base.urlsafe_csrf_tokens = false
+    token_length = (ActionController::RequestForgeryProtection::AUTHENTICITY_TOKEN_LENGTH * 4.0 / 3).ceil
+    token_including_url_safe_chars = "-_".ljust(token_length, "A")
+    session[:_csrf_token] = token_including_url_safe_chars
+    @controller.stub :form_authenticity_token, token_including_url_safe_chars do
+      assert_not_blocked { post :index, params: { custom_authenticity_token: token_including_url_safe_chars } }
+    end
+  ensure
+    ActionController::Base.urlsafe_csrf_tokens = config_before
   end
 
   def test_should_allow_patch_with_token
@@ -596,15 +614,6 @@ module RequestForgeryProtectionTests
       @request.accept = "text/javascript"
       get :negotiate_cross_origin, xhr: true
     end
-  end
-
-  def test_should_not_trigger_content_type_deprecation
-    original = ActionDispatch::Response.return_only_media_type_on_content_type
-    ActionDispatch::Response.return_only_media_type_on_content_type = true
-
-    assert_not_deprecated { get :same_origin_js, xhr: true }
-  ensure
-    ActionDispatch::Response.return_only_media_type_on_content_type = original
   end
 
   def test_should_not_raise_error_if_token_is_not_a_string

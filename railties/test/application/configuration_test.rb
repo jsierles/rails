@@ -153,12 +153,25 @@ module ApplicationTests
 
       app "development"
 
-      ActiveRecord::Migrator.migrations_paths = ["#{app_path}/db/migrate"]
-
       begin
+        ActiveRecord::Migrator.migrations_paths = ["#{app_path}/db/migrate"]
+
         get "/foo"
         assert_equal 500, last_response.status
         assert_match "ActiveRecord::PendingMigrationError", last_response.body
+
+        assert_changes -> { File.exist?(File.join(app_path, "db", "schema.rb")) }, from: false, to: true do
+          output = capture(:stdout) do
+            post "/rails/actions", { error: "ActiveRecord::PendingMigrationError", action: "Run pending migrations", location: "/foo" }
+          end
+
+          assert_match(/\d{14}\s+CreateUser/, output)
+        end
+
+        assert_equal 302, last_response.status
+
+        get "/foo"
+        assert_equal 404, last_response.status
       ensure
         ActiveRecord::Migrator.migrations_paths = nil
       end
@@ -1319,7 +1332,7 @@ module ApplicationTests
       app "development"
 
       post "/posts.json", '{ "title": "foo", "name": "bar" }', "CONTENT_TYPE" => "application/json"
-      assert_equal '<ActionController::Parameters {"title"=>"foo"} permitted: false>', last_response.body
+      assert_equal '#<ActionController::Parameters {"title"=>"foo"} permitted: false>', last_response.body
     end
 
     test "config.action_controller.permit_all_parameters = true" do
@@ -1564,12 +1577,26 @@ module ApplicationTests
       assert_equal session_options, app.config.session_options
     end
 
+    test "config.log_level defaults to debug in development" do
+      restore_default_config
+      app "development"
+
+      assert_equal Logger::DEBUG, Rails.logger.level
+    end
+
+    test "config.log_level default to info in production" do
+      restore_default_config
+      app "production"
+
+      assert_equal Logger::INFO, Rails.logger.level
+    end
+
     test "config.log_level with custom logger" do
       make_basic_app do |application|
         application.config.logger = Logger.new(STDOUT)
-        application.config.log_level = :info
+        application.config.log_level = :debug
       end
-      assert_equal Logger::INFO, Rails.logger.level
+      assert_equal Logger::DEBUG, Rails.logger.level
     end
 
     test "respond_to? accepts include_private" do
@@ -1597,6 +1624,11 @@ module ApplicationTests
       app "development"
 
       assert_not ActiveRecord::Base.verbose_query_logs
+    end
+
+    test "config.active_record.suppress_multiple_database_warning is false by default in development" do
+      app "development"
+      assert_not ActiveRecord::Base.suppress_multiple_database_warning
     end
 
     test "config.annotations wrapping SourceAnnotationExtractor::Annotation class" do
@@ -1836,6 +1868,23 @@ module ApplicationTests
       app_file "config/database.yml", ""
       app "development"
       assert_equal({}, Rails.application.config.load_database_yaml)
+    end
+
+    test "setup_initial_database_yaml does not print a warning if config.active_record.suppress_multiple_database_warning is true" do
+      app_file "config/database.yml", <<-YAML
+        <%= Rails.env %>:
+          username: bobby
+          adapter: sqlite3
+          database: 'dev_db'
+      YAML
+      add_to_config <<-RUBY
+        config.active_record.suppress_multiple_database_warning = true
+      RUBY
+      app "development"
+
+      assert_silent do
+        ActiveRecord::Tasks::DatabaseTasks.setup_initial_database_yaml
+      end
     end
 
     test "raises with proper error message if no database configuration found" do
@@ -2080,6 +2129,19 @@ module ApplicationTests
       assert_equal "unicorn", Rails.application.config.my_custom_config[:key]
     end
 
+    test "config_for handles YAML patches (like safe_yaml) that disable the symbolize_names option" do
+      app_file "config/custom.yml", <<~RUBY
+        development:
+          key: value
+      RUBY
+
+      app "development"
+
+      YAML.stub :load, { "development" => { "key" => "value" } } do
+        assert_equal({ key: "value" }, Rails.application.config_for(:custom))
+      end
+    end
+
     test "api_only is false by default" do
       app "development"
       assert_not Rails.application.config.api_only
@@ -2198,6 +2260,18 @@ module ApplicationTests
       assert_equal Digest::SHA1, ActiveSupport::Digest.hash_digest_class
     end
 
+    test "ActiveSupport::Digest.hash_digest_class can be configured via config.active_support.hash_digest_class" do
+      remove_from_config '.*config\.load_defaults.*\n'
+
+      app_file "config/initializers/custom_digest_class.rb", <<-RUBY
+        Rails.application.config.active_support.hash_digest_class = Digest::SHA256
+      RUBY
+
+      app "development"
+
+      assert_equal Digest::SHA256, ActiveSupport::Digest.hash_digest_class
+    end
+
     test "custom serializers should be able to set via config.active_job.custom_serializers in an initializer" do
       class ::DummySerializer < ActiveJob::Serializers::ObjectSerializer; end
 
@@ -2208,6 +2282,18 @@ module ApplicationTests
       app "development"
 
       assert_includes ActiveJob::Serializers.serializers, DummySerializer
+    end
+
+    test "active record job queue is set" do
+      app "development"
+
+      assert_equal ActiveSupport::InheritableOptions.new(destroy: :active_record_destroy), ActiveRecord::Base.queues
+    end
+
+    test "destroy association async job should be loaded in configs" do
+      app "development"
+
+      assert_equal ActiveRecord::DestroyAssociationAsyncJob, ActiveRecord::Base.destroy_association_async_job
     end
 
     test "ActionView::Helpers::FormTagHelper.default_enforce_utf8 is false by default" do
@@ -2236,31 +2322,17 @@ module ApplicationTests
       assert_equal true, ActionView::Helpers::FormTagHelper.default_enforce_utf8
     end
 
-    test "ActionView::Template.finalize_compiled_template_methods is true by default" do
-      app "test"
-      assert_deprecated do
-        ActionView::Template.finalize_compiled_template_methods
-      end
-    end
-
-    test "ActionView::Template.finalize_compiled_template_methods can be configured via config.action_view.finalize_compiled_template_methods" do
-      app_file "config/environments/test.rb", <<-RUBY
-      Rails.application.configure do
-        config.action_view.finalize_compiled_template_methods = false
-      end
-      RUBY
-
-      app "test"
-
-      assert_deprecated do
-        ActionView::Template.finalize_compiled_template_methods
-      end
-    end
-
-    test "ActiveJob::Base.retry_jitter is 0.15 by default" do
+    test "ActiveJob::Base.retry_jitter is 0.15 by default for new apps" do
       app "development"
 
       assert_equal 0.15, ActiveJob::Base.retry_jitter
+    end
+
+    test "ActiveJob::Base.retry_jitter is 0.0 by default for upgraded apps" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      app "development"
+
+      assert_equal 0.0, ActiveJob::Base.retry_jitter
     end
 
     test "ActiveJob::Base.retry_jitter can be set by config" do
@@ -2269,33 +2341,6 @@ module ApplicationTests
       Rails.application.config.active_job.retry_jitter = 0.22
 
       assert_equal 0.22, ActiveJob::Base.retry_jitter
-    end
-
-    test "ActiveJob::Base.return_false_on_aborted_enqueue is true by default" do
-      app "development"
-
-      assert_equal true, ActiveJob::Base.return_false_on_aborted_enqueue
-    end
-
-    test "ActiveJob::Base.return_false_on_aborted_enqueue is false in the 5.x defaults" do
-      remove_from_config '.*config\.load_defaults.*\n'
-      add_to_config 'config.load_defaults "5.2"'
-
-      app "development"
-
-      assert_equal false, ActiveJob::Base.return_false_on_aborted_enqueue
-    end
-
-    test "ActiveJob::Base.return_false_on_aborted_enqueue can be configured in the new framework defaults" do
-      remove_from_config '.*config\.load_defaults.*\n'
-
-      app_file "config/initializers/new_framework_defaults_6_0.rb", <<-RUBY
-        Rails.application.config.active_job.return_false_on_aborted_enqueue = true
-      RUBY
-
-      app "development"
-
-      assert_equal true, ActiveJob::Base.return_false_on_aborted_enqueue
     end
 
     test "ActiveJob::Base.skip_after_callbacks_if_terminated is true by default" do
@@ -2338,6 +2383,28 @@ module ApplicationTests
       app "development"
 
       assert_equal :lax, Rails.application.config.action_dispatch.cookies_same_site_protection
+    end
+
+    test "Rails.application.config.action_dispatch.ssl_default_redirect_status is 308 in 6.1 defaults" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.1"'
+
+      app "production"
+
+      assert_equal 308, Rails.application.config.action_dispatch.ssl_default_redirect_status
+    end
+
+    test "Rails.application.config.action_dispatch.ssl_default_redirect_status can be configured in an initializer" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.0"'
+
+      app_file "config/initializers/new_framework_defaults_6_1.rb", <<-RUBY
+        Rails.application.config.action_dispatch.ssl_default_redirect_status = 308
+      RUBY
+
+      app "production"
+
+      assert_equal 308, Rails.application.config.action_dispatch.ssl_default_redirect_status
     end
 
     test "ActiveSupport.utc_to_local_returns_utc_offset_times is true in 6.1 defaults" do
@@ -2399,31 +2466,12 @@ module ApplicationTests
       assert_nil ActiveStorage.queues[:purge]
     end
 
-    test "ActionDispatch::Response.return_only_media_type_on_content_type is false by default" do
-      app "development"
+    test "ActionCable.server.config.cable is set when missing configuration for the current environment" do
+      quietly do
+        app "missing"
+      end
 
-      assert_equal false, ActionDispatch::Response.return_only_media_type_on_content_type
-    end
-
-    test "ActionDispatch::Response.return_only_media_type_on_content_type is true in the 5.x defaults" do
-      remove_from_config '.*config\.load_defaults.*\n'
-      add_to_config 'config.load_defaults "5.2"'
-
-      app "development"
-
-      assert_equal true, ActionDispatch::Response.return_only_media_type_on_content_type
-    end
-
-    test "ActionDispatch::Response.return_only_media_type_on_content_type can be configured in the new framework defaults" do
-      remove_from_config '.*config\.load_defaults.*\n'
-
-      app_file "config/initializers/new_framework_defaults_6_0.rb", <<-RUBY
-        Rails.application.config.action_dispatch.return_only_media_type_on_content_type = false
-      RUBY
-
-      app "development"
-
-      assert_equal false, ActionDispatch::Response.return_only_media_type_on_content_type
+      assert_kind_of ActiveSupport::HashWithIndifferentAccess, ActionCable.server.config.cable
     end
 
     test "ActionMailbox.logger is Rails.logger by default" do
@@ -2545,8 +2593,10 @@ module ApplicationTests
                                Prefix Verb URI Pattern                                                                        Controller#Action
                    rails_service_blob GET  /files/blobs/redirect/:signed_id/*filename(.:format)                               active_storage/blobs/redirect#show
              rails_service_blob_proxy GET  /files/blobs/proxy/:signed_id/*filename(.:format)                                  active_storage/blobs/proxy#show
+                                      GET  /files/blobs/:signed_id/*filename(.:format)                                        active_storage/blobs/redirect#show
             rails_blob_representation GET  /files/representations/redirect/:signed_blob_id/:variation_key/*filename(.:format) active_storage/representations/redirect#show
       rails_blob_representation_proxy GET  /files/representations/proxy/:signed_blob_id/:variation_key/*filename(.:format)    active_storage/representations/proxy#show
+                                      GET  /files/representations/:signed_blob_id/:variation_key/*filename(.:format)          active_storage/representations/redirect#show
                    rails_disk_service GET  /files/disk/:encoded_key/*filename(.:format)                                       active_storage/disk#show
             update_rails_disk_service PUT  /files/disk/:encoded_token(.:format)                                               active_storage/disk#update
                  rails_direct_uploads POST /files/direct_uploads(.:format)                                                    active_storage/direct_uploads#create
@@ -2603,6 +2653,27 @@ module ApplicationTests
       app "development"
 
       assert_equal true, Rails.application.config.rake_eager_load
+    end
+
+    test "unknown_asset_fallback is false by default" do
+      app "development"
+
+      assert_equal false, Rails.application.config.assets.unknown_asset_fallback
+    end
+
+    test "legacy_connection_handling is false by default for new apps" do
+      app "development"
+
+      assert_equal false, Rails.application.config.active_record.legacy_connection_handling
+    end
+
+    test "legacy_connection_handling is not set before 6.1" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.0"'
+
+      app "development"
+
+      assert_nil Rails.application.config.active_record.legacy_connection_handling
     end
 
     private

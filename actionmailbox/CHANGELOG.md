@@ -1,3 +1,9 @@
+## Rails 6.1.0.rc1 (November 02, 2020) ##
+
+*   Sendgrid ingress now passes through the envelope recipient as `X-Original-To`.
+
+    *Mark Haussmann*
+
 *   Update Mandrill inbound email route to respond appropriately to HEAD requests for URL health checks from Mandrill.
 
     *Bill Cromie*

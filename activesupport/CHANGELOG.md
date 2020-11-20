@@ -1,3 +1,189 @@
+*   Ensure `MemoryStore` disables compression by default. Reverts behavior of
+    `MemoryStore` to its prior rails `5.1` behavior.
+
+    *Max Gurewitz*
+
+## Rails 6.1.0.rc1 (November 02, 2020) ##
+
+*   Calling `iso8601` on negative durations retains the negative sign on individual
+    digits instead of prepending it.
+
+    This change is required so we can interoperate with PostgreSQL, which prefers
+    negative signs for each component.
+
+    Compatibility with other iso8601 parsers which support leading negatives as well
+    as negatives per component is still retained.
+
+    Before:
+
+        (-1.year - 1.day).iso8601
+        # => "-P1Y1D"
+
+    After:
+
+        (-1.year - 1.day).iso8601
+        # => "P-1Y-1D"
+
+    *Vipul A M*
+
+*   Remove deprecated `ActiveSupport::Notifications::Instrumenter#end=`.
+
+    *Rafael Mendonça França*
+
+*   Deprecate `ActiveSupport::Multibyte::Unicode.default_normalization_form`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `ActiveSupport::Multibyte::Unicode.pack_graphemes`,
+    `ActiveSupport::Multibyte::Unicode.unpack_graphemes`,
+    `ActiveSupport::Multibyte::Unicode.normalize`,
+    `ActiveSupport::Multibyte::Unicode.downcase`,
+    `ActiveSupport::Multibyte::Unicode.upcase` and `ActiveSupport::Multibyte::Unicode.swapcase`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `ActiveSupport::Multibyte::Chars#consumes?` and `ActiveSupport::Multibyte::Chars#normalize`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated file `active_support/core_ext/range/include_range`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated file `active_support/core_ext/hash/transform_values`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated file `active_support/core_ext/hash/compact`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated file `active_support/core_ext/array/prepend_and_append`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated file `active_support/core_ext/numeric/inquiry`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated file `active_support/core_ext/module/reachable`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `Module#parent_name`, `Module#parent` and `Module#parents`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `ActiveSupport::LoggerThreadSafeLevel#after_initialize`.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated `LoggerSilence` constant.
+
+    *Rafael Mendonça França*
+
+*   Remove deprecated fallback to `I18n.default_local` when `config.i18n.fallbacks` is empty.
+
+    *Rafael Mendonça França*
+
+*   Remove entries from local cache on `RedisCacheStore#delete_matched`
+
+    Fixes #38627
+
+    *ojab*
+
+*   Speed up `ActiveSupport::SecurityUtils.fixed_length_secure_compare` by using
+    `OpenSSL.fixed_length_secure_compare`, if available.
+
+    *Nate Matykiewicz*
+
+*   `ActiveSupport::Cache::MemCacheStore` now checks `ENV["MEMCACHE_SERVERS"]` before falling back to `"localhost:11211"` if configured without any addresses.
+
+    ```ruby
+    config.cache_store = :mem_cache_store
+
+    # is now equivalent to
+
+    config.cache_store = :mem_cache_store, ENV["MEMCACHE_SERVERS"] || "localhost:11211"
+
+    # instead of
+
+    config.cache_store = :mem_cache_store, "localhost:11211" # ignores ENV["MEMCACHE_SERVERS"]
+    ```
+
+    *Sam Bostock*
+
+*   `ActiveSupport::Subscriber#attach_to` now accepts an `inherit_all:` argument. When set to true,
+    it allows a subscriber to receive events for methods defined in the subscriber's ancestor class(es).
+
+    ```ruby
+    class ActionControllerSubscriber < ActiveSupport::Subscriber
+      attach_to :action_controller
+
+      def start_processing(event)
+        info "Processing by #{event.payload[:controller]}##{event.payload[:action]} as #{format}"
+      end
+
+      def redirect_to(event)
+        info { "Redirected to #{event.payload[:location]}" }
+      end
+    end
+
+    # We detach ActionControllerSubscriber from the :action_controller namespace so that our CustomActionControllerSubscriber
+    # can provide its own instrumentation for certain events in the namespace
+    ActionControllerSubscriber.detach_from(:action_controller)
+
+    class CustomActionControllerSubscriber < ActionControllerSubscriber
+      attach_to :action_controller, inherit_all: true
+
+      def start_processing(event)
+        info "A custom response to start_processing events"
+      end
+
+      # => CustomActionControllerSubscriber will process events for "start_processing.action_controller" notifications
+      # using its own #start_processing implementation, while retaining ActionControllerSubscriber's instrumentation
+      # for "redirect_to.action_controller" notifications
+    end
+    ```
+
+    *Adrianna Chang*
+
+*   Allow the digest class used to generate non-sensitive digests to be configured with `config.active_support.hash_digest_class`.
+
+    `config.active_support.use_sha1_digests` is deprecated in favour of `config.active_support.hash_digest_class = ::Digest::SHA1`.
+
+    *Dirkjan Bussink*
+
+*   Fix bug to make memcached write_entry expire correctly with unless_exist
+
+    *Jye Lee*
+
+*   Add `ActiveSupport::Duration` conversion methods
+
+    `in_seconds`, `in_minutes`, `in_hours`, `in_days`, `in_weeks`, `in_months`, and `in_years` return the respective duration covered.
+
+    *Jason York*
+
+*   Fixed issue in `ActiveSupport::Cache::RedisCacheStore` not passing options
+    to `read_multi` causing `fetch_multi` to not work properly
+
+    *Rajesh Sharma*
+
+*   Fixed issue in `ActiveSupport::Cache::MemCacheStore` which caused duplicate compression,
+    and caused the provided `compression_threshold` to not be respected.
+
+    *Max Gurewitz*
+
+*   Prevent `RedisCacheStore` and `MemCacheStore` from performing compression
+    when reading entries written with `raw: true`.
+
+    *Max Gurewitz*
+
+*   `URI.parser` is deprecated and will be removed in Rails 6.2. Use
+    `URI::DEFAULT_PARSER` instead.
+
+    *Jean Boussier*
+
 *   `require_dependency` has been documented to be _obsolete_ in `:zeitwerk`
     mode. The method is not deprecated as such (yet), but applications are
     encouraged to not use it.

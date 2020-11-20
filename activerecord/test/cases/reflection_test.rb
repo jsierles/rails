@@ -69,6 +69,8 @@ class ReflectionTest < ActiveRecord::TestCase
     assert_equal :string, @first.column_for_attribute(:title).type
     assert_equal :string, @first.type_for_attribute("title").type
     assert_equal :string, @first.type_for_attribute(:title).type
+    assert_equal :string, @first.type_for_attribute("heading").type
+    assert_equal :string, @first.type_for_attribute(:heading).type
     assert_equal 250, @first.column_for_attribute("title").limit
   end
 
@@ -326,7 +328,7 @@ class ReflectionTest < ActiveRecord::TestCase
   def test_association_primary_key
     # Normal association
     assert_equal "id",   Author.reflect_on_association(:posts).association_primary_key.to_s
-    assert_equal "name", Author.reflect_on_association(:essay).association_primary_key.to_s
+    assert_equal "id",   Author.reflect_on_association(:essay).association_primary_key.to_s
     assert_equal "name", Essay.reflect_on_association(:writer).association_primary_key.to_s
 
     # Through association (uses the :primary_key option from the source reflection)
@@ -512,74 +514,7 @@ class ReflectionTest < ActiveRecord::TestCase
     def assert_reflection(klass, association, options)
       assert reflection = klass.reflect_on_association(association)
       options.each do |method, value|
-        assert_equal(value, reflection.send(method))
+        assert_equal(value, reflection.public_send(method))
       end
     end
-end
-
-class UncastableReflectionTest < ActiveRecord::TestCase
-  class Book < ActiveRecord::Base
-  end
-
-  class Subscription < ActiveRecord::Base
-    belongs_to :subscriber
-    belongs_to :book
-  end
-
-  class Subscriber < ActiveRecord::Base
-    self.primary_key = "nick"
-    has_many :subscriptions
-    has_one :subscription
-    has_many :books, through: :subscriptions
-    has_one :book, through: :subscription
-  end
-
-  setup do
-    @subscriber = Subscriber.create!(nick: "unique")
-  end
-
-  teardown do
-    Book._reflections.clear
-    Book.clear_reflections_cache
-    silence_warnings do
-      Subscriber.has_many :books, through: :subscriptions
-      Subscriber.has_one :book, through: :subscription
-    end
-  end
-
-  test "uncastable has_many through: reflection" do
-    error = assert_raises(NotImplementedError) { @subscriber.books }
-    assert_equal <<~MSG.squish, error.message
-      In order to correctly type cast UncastableReflectionTest::Subscriber.nick,
-      UncastableReflectionTest::Book needs to define a :subscriptions association.
-    MSG
-  end
-
-  test "uncastable has_one through: reflection" do
-    error = assert_raises(NotImplementedError) { @subscriber.book }
-
-    assert_equal <<~MSG.squish, error.message
-      In order to correctly type cast UncastableReflectionTest::Subscriber.nick,
-      UncastableReflectionTest::Book needs to define a :subscription association.
-    MSG
-  end
-
-  test "fixing uncastable has_many through: reflection with has_many" do
-    silence_warnings do
-      Book.has_many :subscriptions
-    end
-    @subscriber.books
-  end
-
-  test "fixing uncastable has_one through: reflection with has_many" do
-    silence_warnings do
-      Book.has_many :subscriptions
-    end
-    @subscriber.book
-  end
-
-  test "fixing uncastable has_one through: reflection with has_one" do
-    Book.has_one :subscription
-    @subscriber.book
-  end
 end

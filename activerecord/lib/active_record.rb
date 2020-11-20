@@ -36,13 +36,13 @@ require "active_record/errors"
 module ActiveRecord
   extend ActiveSupport::Autoload
 
-  autoload :AdvisoryLockBase
   autoload :Base
   autoload :Callbacks
   autoload :Core
   autoload :ConnectionHandling
   autoload :CounterCache
   autoload :DynamicMatchers
+  autoload :DelegatedType
   autoload :Enum
   autoload :InternalMetadata
   autoload :Explain
@@ -76,7 +76,7 @@ module ActiveRecord
   autoload :Translation
   autoload :Validations
   autoload :SecureToken
-  autoload :DatabaseSelector, "active_record/middleware/database_selector"
+  autoload :DestroyAssociationAsyncJob
 
   eager_autoload do
     autoload :ConnectionAdapters
@@ -186,3 +186,4 @@ end
 YAML.load_tags["!ruby/object:ActiveRecord::AttributeSet"] = "ActiveModel::AttributeSet"
 YAML.load_tags["!ruby/object:ActiveRecord::Attribute::FromDatabase"] = "ActiveModel::Attribute::FromDatabase"
 YAML.load_tags["!ruby/object:ActiveRecord::LazyAttributeHash"] = "ActiveModel::LazyAttributeHash"
+YAML.load_tags["!ruby/object:ActiveRecord::ConnectionAdapters::AbstractMysqlAdapter::MysqlString"] = "ActiveRecord::Type::String"
