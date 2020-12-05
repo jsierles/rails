@@ -32,9 +32,9 @@ module ActiveRecord
     def self.references(attributes)
       attributes.each_with_object([]) do |(key, value), result|
         if value.is_a?(Hash)
-          result << key
+          result << Arel.sql(key)
         elsif key.include?(".")
-          result << key.split(".").first
+          result << Arel.sql(key.split(".").first)
         end
       end
     end
@@ -100,7 +100,7 @@ module ActiveRecord
               end
             elsif associated_table.through_association?
               next associated_table.predicate_builder.expand_from_hash(
-                associated_table.join_foreign_key => value
+                associated_table.primary_key => value
               )
             end
 

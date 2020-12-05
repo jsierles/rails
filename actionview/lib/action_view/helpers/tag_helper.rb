@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
+require "active_support/core_ext/enumerable"
 require "active_support/core_ext/string/output_safety"
 require "set"
+require "action_view/helpers/capture_helper"
+require "action_view/helpers/output_safety_helper"
 
 module ActionView
   # = Action View Tag Helpers
@@ -9,7 +12,6 @@ module ActionView
     # Provides methods to generate HTML tags programmatically both as a modern
     # HTML5 compliant builder style and legacy XHTML compliant tags.
     module TagHelper
-      extend ActiveSupport::Concern
       include CaptureHelper
       include OutputSafetyHelper
 
@@ -47,6 +49,15 @@ module ActionView
 
         def initialize(view_context)
           @view_context = view_context
+        end
+
+        # Transforms a Hash into HTML Attributes, ready to be interpolated into
+        # ERB.
+        #
+        #   <input <%= tag.attributes(type: :text, aria: { label: "Search" }) %> >
+        #   # => <input type="text" aria-label="Search">
+        def attributes(attributes)
+          tag_options(attributes.to_h).to_s.strip.html_safe
         end
 
         def p(*arguments, **options, &block)
@@ -119,6 +130,8 @@ module ActionView
           when Array, Hash
             value = TagHelper.build_tag_values(value) if key.to_s == "class"
             value = escape ? safe_join(value, " ") : value.join(" ")
+          when Regexp
+            value = escape ? ERB::Util.unwrapped_html_escape(value.source) : value.source
           else
             value = escape ? ERB::Util.unwrapped_html_escape(value) : value.to_s
           end

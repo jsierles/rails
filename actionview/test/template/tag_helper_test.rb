@@ -130,6 +130,7 @@ class TagHelperTest < ActionView::TestCase
                  tag.p("<script>evil_js</script>")
     assert_equal "<p><script>evil_js</script></p>",
                  tag.p("<script>evil_js</script>", escape_attributes: false)
+    assert_equal '<input pattern="\w+">', tag.input(pattern: /\w+/)
   end
 
   def test_tag_builder_nested
@@ -389,6 +390,30 @@ class TagHelperTest < ActionView::TestCase
   def test_escape_once
     assert_equal "1 &lt; 2 &amp; 3", escape_once("1 < 2 &amp; 3")
     assert_equal " &#X27; &#x27; &#x03BB; &#X03bb; &quot; &#39; &lt; &gt; ", escape_once(" &#X27; &#x27; &#x03BB; &#X03bb; \" ' < > ")
+  end
+
+  def test_tag_attributes_inlines_html_attributes
+    expected_output = <<~HTML.strip
+      <input type="text" name="name" aria-hidden="false" aria-label="label" data-input-value="data" required="required">
+    HTML
+
+    assert_equal expected_output, render_erb(<<~HTML.strip)
+      <input type="text" <%= tag.attributes value: nil, name: "name", "aria-hidden": false, aria: { label: "label" }, data: { input_value: "data" }, required: true %>>
+    HTML
+  end
+
+  def test_tag_attributes_escapes_values
+    assert_not_includes "<script>alert()</script>", render_erb(<<~HTML.strip)
+      <input type="text" <%= tag.attributes xss: '"><script>alert()</script>' %>>
+    HTML
+  end
+
+  def test_tag_attributes_nil
+    assert_equal %(<input type="text" >), render_erb(%(<input type="text" <%= tag.attributes nil %>>))
+  end
+
+  def test_tag_attributes_empty
+    assert_equal %(<input type="text" >), render_erb(%(<input type="text" <%= tag.attributes({}) %>>))
   end
 
   def test_tag_honors_html_safe_for_param_values

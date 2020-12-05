@@ -430,10 +430,6 @@ module ActiveRecord
         klass.cached_find_by_statement(key, &block)
       end
 
-      def constructable?
-        true
-      end
-
       def join_table
         @join_table ||= -(options[:join_table]&.to_s || derive_join_table)
       end
@@ -562,9 +558,6 @@ module ActiveRecord
         options[:polymorphic]
       end
 
-      VALID_AUTOMATIC_INVERSE_MACROS = [:has_many, :has_one, :belongs_to]
-      INVALID_AUTOMATIC_INVERSE_OPTIONS = [:through, :foreign_key]
-
       def add_as_source(seed)
         seed
       end
@@ -618,6 +611,7 @@ module ActiveRecord
         # with the current reflection's klass name.
         def valid_inverse_reflection?(reflection)
           reflection &&
+            foreign_key == reflection.foreign_key &&
             klass <= reflection.active_record &&
             can_find_inverse_of_automatically?(reflection)
         end
@@ -633,8 +627,8 @@ module ActiveRecord
         # inverse, so we exclude reflections with scopes.
         def can_find_inverse_of_automatically?(reflection)
           reflection.options[:inverse_of] != false &&
-            VALID_AUTOMATIC_INVERSE_MACROS.include?(reflection.macro) &&
-            !INVALID_AUTOMATIC_INVERSE_OPTIONS.any? { |opt| reflection.options[opt] } &&
+            !reflection.options[:through] &&
+            !reflection.options[:foreign_key] &&
             !reflection.scope
         end
 
@@ -719,10 +713,6 @@ module ActiveRecord
 
       def join_foreign_type
         foreign_type
-      end
-
-      def constructable?
-        !polymorphic?
       end
 
       private
