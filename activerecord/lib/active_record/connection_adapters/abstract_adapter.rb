@@ -37,7 +37,7 @@ module ActiveRecord
       include Savepoints
 
       SIMPLE_INT = /\A\d+\z/
-      COMMENT_REGEX = %r{(?:\-\-.*\n)*|/\*(?:[^\*]|\*[^/])*\*/}m
+      COMMENT_REGEX = %r{(?:--.*\n)*|/\*(?:[^*]|\*[^/])*\*/}m
 
       attr_accessor :pool
       attr_reader :visitor, :owner, :logger, :lock
@@ -69,7 +69,7 @@ module ActiveRecord
       def self.build_read_query_regexp(*parts) # :nodoc:
         parts += DEFAULT_READ_QUERY
         parts = parts.map { |part| /#{part}/i }
-        /\A(?:[\(\s]|#{COMMENT_REGEX})*#{Regexp.union(*parts)}/
+        /\A(?:[(\s]|#{COMMENT_REGEX})*#{Regexp.union(*parts)}/
       end
 
       def self.quoted_column_names # :nodoc:
@@ -111,7 +111,7 @@ module ActiveRecord
         @config.fetch(:use_metadata_table, true)
       end
 
-      # Determines whether writes are currently being prevents.
+      # Determines whether writes are currently being prevented.
       #
       # Returns true if the connection is a replica.
       #
@@ -123,10 +123,9 @@ module ActiveRecord
       def preventing_writes?
         return true if replica?
         return ActiveRecord::Base.connection_handler.prevent_writes if ActiveRecord::Base.legacy_connection_handling
-        return false if owner_name.nil?
+        return false if connection_klass.nil?
 
-        klass = self.owner_name.safe_constantize
-        klass&.current_preventing_writes
+        connection_klass.current_preventing_writes
       end
 
       def migrations_paths # :nodoc:
@@ -202,8 +201,8 @@ module ActiveRecord
         @owner = Thread.current
       end
 
-      def owner_name # :nodoc:
-        @pool.owner_name
+      def connection_klass # :nodoc:
+        @pool.connection_klass
       end
 
       def schema_cache

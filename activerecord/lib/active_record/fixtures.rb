@@ -152,7 +152,7 @@ module ActiveRecord
   # - define a helper method in <tt>test_helper.rb</tt>
   #     module FixtureFileHelpers
   #       def file_sha(path)
-  #         Digest::SHA2.hexdigest(File.read(Rails.root.join('test/fixtures', path)))
+  #         OpenSSL::Digest::SHA256.hexdigest(File.read(Rails.root.join('test/fixtures', path)))
   #       end
   #     end
   #     ActiveRecord::FixtureSet.context_class.include FixtureFileHelpers
@@ -773,9 +773,12 @@ module ActiveRecord
 
     def find
       raise FixtureClassNotFound, "No class attached to find." unless model_class
-      model_class.unscoped do
+      object = model_class.unscoped do
         model_class.find(fixture[model_class.primary_key])
       end
+      # Fixtures can't be eagerly loaded
+      object.instance_variable_set(:@strict_loading, false)
+      object
     end
   end
 end

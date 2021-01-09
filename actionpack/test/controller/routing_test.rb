@@ -216,7 +216,7 @@ class LegacyRouteSetTests < ActiveSupport::TestCase
   def test_regexp_precedence
     rs.draw do
       get "/whois/:domain", constraints: {
-        domain: /\w+\.[\w\.]+/ },
+        domain: /\w+\.[\w.]+/ },
         to: lambda { |env| [200, {}, %w{regexp}] }
 
       get "/whois/:id", to: lambda { |env| [200, {}, %w{id}] }
@@ -242,6 +242,18 @@ class LegacyRouteSetTests < ActiveSupport::TestCase
 
     assert_equal "default", get(URI("http://www.example.org/"))
     assert_equal "clients", get(URI("http://clients.example.org/"))
+  end
+
+  def test_format_symbol_constraints
+    rs.draw do
+      get "/api", constraints: { format: :json },
+                 to: lambda { |env| [200, {}, %w{json}] }
+      get "/api", constraints: { format: :xml },
+                 to: lambda { |env| [200, {}, %w{xml}] }
+    end
+
+    assert_equal "json", get(URI("http://www.example.org/api.json"))
+    assert_equal "xml", get(URI("http://clients.example.org/api.xml"))
   end
 
   def test_lambda_constraints
@@ -1200,7 +1212,7 @@ class RouteSetTest < ActiveSupport::TestCase
 
   def test_recognize_with_encoded_id_and_regex
     set.draw do
-      get "page/:id" => "pages#show", :id => /[a-zA-Z0-9\+]+/
+      get "page/:id" => "pages#show", :id => /[a-zA-Z0-9+]+/
     end
 
     assert_equal({ controller: "pages", action: "show", id: "10" }, request_path_params("/page/10"))

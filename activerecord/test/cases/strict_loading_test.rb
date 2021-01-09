@@ -6,6 +6,8 @@ require "models/computer"
 require "models/mentor"
 require "models/project"
 require "models/ship"
+require "models/strict_zine"
+require "models/interest"
 
 class StrictLoadingTest < ActiveRecord::TestCase
   fixtures :developers
@@ -83,6 +85,27 @@ class StrictLoadingTest < ActiveRecord::TestCase
       assert_raises ActiveRecord::StrictLoadingViolationError do
         dev.audit_logs.to_a
       end
+    end
+  end
+
+  def test_strict_loading_is_ignored_in_validation_context
+    with_strict_loading_by_default(Developer) do
+      developer = Developer.first
+      assert_predicate developer, :strict_loading?
+
+      assert_nothing_raised do
+        AuditLogRequired.create! developer_id: developer.id, message: "i am a message"
+      end
+    end
+  end
+
+  def test_strict_loading_with_reflection_is_ignored_in_validation_context
+    with_strict_loading_by_default(Developer) do
+      developer = Developer.first
+      assert_predicate developer, :strict_loading?
+
+      developer.required_audit_logs.build(message: "I am message")
+      developer.save!
     end
   end
 
@@ -416,4 +439,21 @@ class StrictLoadingTest < ActiveRecord::TestCase
         ActiveRecord::Base.logger = old_logger
       end
     end
+end
+
+class StrictLoadingFixturesTest < ActiveRecord::TestCase
+  fixtures :strict_zines
+
+  test "strict loading violations are ignored on fixtures" do
+    ActiveRecord::FixtureSet.reset_cache
+    create_fixtures("strict_zines")
+
+    assert_nothing_raised do
+      strict_zines(:going_out).interests.to_a
+    end
+
+    assert_raises(ActiveRecord::StrictLoadingViolationError) do
+      StrictZine.first.interests.to_a
+    end
+  end
 end

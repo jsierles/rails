@@ -802,7 +802,7 @@ module ApplicationTests
       end
 
       get "/"
-      assert_match(/csrf\-param/, last_response.body)
+      assert_match(/csrf-param/, last_response.body)
     end
 
     test "default form builder specified as a string" do
@@ -1147,6 +1147,29 @@ module ApplicationTests
       _ = ActionMailer::Base
 
       assert_equal "test_default", ActionMailer::Base.class_variable_get(:@@deliver_later_queue_name)
+    end
+
+    test "ActionMailer::DeliveryJob queue name is :mailers without the Rails defaults" do
+      remove_from_config '.*config\.load_defaults.*\n'
+
+      app "development"
+
+      require "mail"
+      _ = ActionMailer::Base
+
+      assert_equal :mailers, ActionMailer::Base.class_variable_get(:@@deliver_later_queue_name)
+    end
+
+    test "ActionMailer::DeliveryJob queue name is nil by default in 6.1" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.1"'
+
+      app "development"
+
+      require "mail"
+      _ = ActionMailer::Base
+
+      assert_nil ActionMailer::Base.class_variable_get(:@@deliver_later_queue_name)
     end
 
     test "valid timezone is setup correctly" do
@@ -2234,18 +2257,18 @@ module ApplicationTests
       assert_equal true, ActiveSupport::MessageEncryptor.use_authenticated_message_encryption
     end
 
-    test "ActiveSupport::Digest.hash_digest_class is Digest::SHA1 by default for new apps" do
+    test "ActiveSupport::Digest.hash_digest_class is OpenSSL::Digest::SHA256 by default for new apps" do
       app "development"
 
-      assert_equal Digest::SHA1, ActiveSupport::Digest.hash_digest_class
+      assert_equal OpenSSL::Digest::SHA256, ActiveSupport::Digest.hash_digest_class
     end
 
-    test "ActiveSupport::Digest.hash_digest_class is Digest::MD5 by default for upgraded apps" do
+    test "ActiveSupport::Digest.hash_digest_class is OpenSSL::Digest::MD5 by default for upgraded apps" do
       remove_from_config '.*config\.load_defaults.*\n'
 
       app "development"
 
-      assert_equal Digest::MD5, ActiveSupport::Digest.hash_digest_class
+      assert_equal OpenSSL::Digest::MD5, ActiveSupport::Digest.hash_digest_class
     end
 
     test "ActiveSupport::Digest.hash_digest_class can be configured via config.active_support.use_sha1_digests" do
@@ -2257,19 +2280,45 @@ module ApplicationTests
 
       app "development"
 
-      assert_equal Digest::SHA1, ActiveSupport::Digest.hash_digest_class
+      assert_equal OpenSSL::Digest::SHA1, ActiveSupport::Digest.hash_digest_class
     end
 
     test "ActiveSupport::Digest.hash_digest_class can be configured via config.active_support.hash_digest_class" do
       remove_from_config '.*config\.load_defaults.*\n'
 
       app_file "config/initializers/custom_digest_class.rb", <<-RUBY
-        Rails.application.config.active_support.hash_digest_class = Digest::SHA256
+        Rails.application.config.active_support.hash_digest_class = OpenSSL::Digest::SHA256
       RUBY
 
       app "development"
 
-      assert_equal Digest::SHA256, ActiveSupport::Digest.hash_digest_class
+      assert_equal OpenSSL::Digest::SHA256, ActiveSupport::Digest.hash_digest_class
+    end
+
+    test "ActiveSupport::KeyGenerator.hash_digest_class is OpenSSL::Digest::SHA256 by default for new apps" do
+      app "development"
+
+      assert_equal OpenSSL::Digest::SHA256, ActiveSupport::KeyGenerator.hash_digest_class
+    end
+
+    test "ActiveSupport::KeyGenerator.hash_digest_class is OpenSSL::Digest::SHA1 by default for upgraded apps" do
+      remove_from_config '.*config\.load_defaults.*\n'
+
+      app "development"
+
+      assert_equal OpenSSL::Digest::SHA1, ActiveSupport::KeyGenerator.hash_digest_class
+    end
+
+    test "ActiveSupport::KeyGenerator.hash_digest_class can be configured via config.active_support.key_generator_hash_digest_class" do
+      remove_from_config '.*config\.load_defaults.*\n'
+
+      app_file "config/initializers/custom_key_generator_digest_class.rb", <<-RUBY
+        Rails.application.config.active_support.key_generator_hash_digest_class = OpenSSL::Digest::SHA256
+      RUBY
+
+      app "development"
+
+      assert_equal OpenSSL::Digest::SHA256, ActiveSupport::KeyGenerator.hash_digest_class
     end
 
     test "custom serializers should be able to set via config.active_job.custom_serializers in an initializer" do
@@ -2322,15 +2371,184 @@ module ApplicationTests
       assert_equal true, ActionView::Helpers::FormTagHelper.default_enforce_utf8
     end
 
-    test "raises when unknown configuration option is set for ActiveJob" do
-      add_to_config <<-RUBY
-        config.active_job.unknown = "test"
+    test "ActionView::Helpers::UrlHelper.button_to_generates_button_tag is true by default" do
+      app "development"
+      assert_equal true, ActionView::Helpers::UrlHelper.button_to_generates_button_tag
+    end
+
+    test "ActionView::Helpers::UrlHelper.button_to_generates_button_tag is false by default for upgraded apps" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.1"'
+      app "development"
+
+      assert_equal false, ActionView::Helpers::UrlHelper.button_to_generates_button_tag
+    end
+
+    test "ActionView::Helpers::UrlHelper.button_to_generates_button_tag can be configured via config.action_view.button_to_generates_button_tag" do
+      remove_from_config '.*config\.load_defaults.*\n'
+
+      app_file "config/initializers/new_framework_defaults_6_2.rb", <<-RUBY
+        Rails.application.config.action_view.button_to_generates_button_tag = true
       RUBY
 
-      assert_raise(NoMethodError) do
-        app "development"
-        ActiveJob::Base # load active_job
+      app "development"
+
+      assert_equal true, ActionView::Helpers::UrlHelper.button_to_generates_button_tag
+    end
+
+    test "ActionView::Helpers::AssetTagHelper.image_loading is nil by default" do
+      app "development"
+      assert_nil ActionView::Helpers::AssetTagHelper.image_loading
+    end
+
+    test "ActionView::Helpers::AssetTagHelper.image_loading can be configured via config.action_view.image_loading" do
+      app_file "config/environments/development.rb", <<-RUBY
+        Rails.application.configure do
+          config.action_view.image_loading = "lazy"
+        end
+      RUBY
+
+      app "development"
+
+      assert_equal "lazy", ActionView::Helpers::AssetTagHelper.image_loading
+    end
+
+    test "ActionView::Helpers::AssetTagHelper.image_decoding is nil by default" do
+      app "development"
+      assert_nil ActionView::Helpers::AssetTagHelper.image_decoding
+    end
+
+    test "ActionView::Helpers::AssetTagHelper.image_decoding can be configured via config.action_view.image_decoding" do
+      app_file "config/environments/development.rb", <<-RUBY
+        Rails.application.configure do
+          config.action_view.image_decoding = "async"
+        end
+      RUBY
+
+      app "development"
+
+      assert_equal "async", ActionView::Helpers::AssetTagHelper.image_decoding
+    end
+
+    test "ActionView::Helpers::AssetTagHelper.preload_links_header is true by default" do
+      app "development"
+      assert_equal true, ActionView::Helpers::AssetTagHelper.preload_links_header
+    end
+
+    test "ActionView::Helpers::AssetTagHelper.preload_links_header is nil by default for upgraded apps" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.0"'
+      app "development"
+
+      assert_nil ActionView::Helpers::AssetTagHelper.preload_links_header
+    end
+
+    test "ActionView::Helpers::AssetTagHelper.preload_links_header can be configured via config.action_view.preload_links_header" do
+      app_file "config/environments/development.rb", <<-RUBY
+        Rails.application.configure do
+          config.action_view.preload_links_header = false
+        end
+      RUBY
+
+      app "development"
+
+      assert_equal false, ActionView::Helpers::AssetTagHelper.preload_links_header
+    end
+
+    test "stylesheet_link_tag sets the Link header by default" do
+      app_file "app/controllers/pages_controller.rb", <<-RUBY
+      class PagesController < ApplicationController
+        def index
+          render inline: "<%= stylesheet_link_tag '/application.css' %>"
+        end
       end
+      RUBY
+
+      add_to_config <<-RUBY
+        routes.prepend do
+          root to: "pages#index"
+        end
+      RUBY
+
+      app "development"
+
+      get "/"
+      assert_match %r[<link rel="stylesheet" media="screen" href="/application.css" />], last_response.body
+      assert_equal "</application.css>; rel=preload; as=style; nopush", last_response.headers["Link"]
+    end
+
+    test "stylesheet_link_tag doesn't set the Link header when disabled" do
+      app_file "config/initializers/action_view.rb", <<-RUBY
+        Rails.application.config.action_view.preload_links_header = false
+      RUBY
+
+      app_file "app/controllers/pages_controller.rb", <<-RUBY
+      class PagesController < ApplicationController
+        def index
+          render inline: "<%= stylesheet_link_tag '/application.css' %>"
+        end
+      end
+      RUBY
+
+      add_to_config <<-RUBY
+        routes.prepend do
+          root to: "pages#index"
+        end
+      RUBY
+
+      app "development"
+
+      get "/"
+      assert_match %r[<link rel="stylesheet" media="screen" href="/application.css" />], last_response.body
+      assert_nil last_response.headers["Link"]
+    end
+
+    test "javascript_include_tag sets the Link header by default" do
+      app_file "app/controllers/pages_controller.rb", <<-RUBY
+      class PagesController < ApplicationController
+        def index
+          render inline: "<%= javascript_include_tag '/application.js' %>"
+        end
+      end
+      RUBY
+
+      add_to_config <<-RUBY
+        routes.prepend do
+          root to: "pages#index"
+        end
+      RUBY
+
+      app "development"
+
+      get "/"
+      assert_match %r[<script src="/application.js"></script>], last_response.body
+      assert_equal "</application.js>; rel=preload; as=script; nopush", last_response.headers["Link"]
+    end
+
+    test "javascript_include_tag doesn't set the Link header when disabled" do
+      app_file "config/initializers/action_view.rb", <<-RUBY
+        Rails.application.config.action_view.preload_links_header = false
+      RUBY
+
+      app_file "app/controllers/pages_controller.rb", <<-RUBY
+      class PagesController < ApplicationController
+        def index
+          render inline: "<%= javascript_include_tag '/application.js' %>"
+        end
+      end
+      RUBY
+
+      add_to_config <<-RUBY
+        routes.prepend do
+          root to: "pages#index"
+        end
+      RUBY
+
+      app "development"
+
+      get "/"
+      assert_match %r[<script src="/application.js"></script>], last_response.body
+      assert_nil last_response.headers["Link"]
     end
 
     test "ActiveJob::Base.retry_jitter is 0.15 by default for new apps" do
@@ -2449,10 +2667,22 @@ module ApplicationTests
       assert_equal true, ActiveSupport.utc_to_local_returns_utc_offset_times
     end
 
-    test "ActiveStorage.queues[:analysis] is :active_storage_analysis by default" do
+    test "ActiveStorage.queues[:analysis] is :active_storage_analysis by default in 6.0" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.0"'
+
       app "development"
 
       assert_equal :active_storage_analysis, ActiveStorage.queues[:analysis]
+    end
+
+    test "ActiveStorage.queues[:analysis] is nil by default in 6.1" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.1"'
+
+      app "development"
+
+      assert_nil ActiveStorage.queues[:analysis]
     end
 
     test "ActiveStorage.queues[:analysis] is nil without Rails 6 defaults" do
@@ -2463,10 +2693,22 @@ module ApplicationTests
       assert_nil ActiveStorage.queues[:analysis]
     end
 
-    test "ActiveStorage.queues[:purge] is :active_storage_purge by default" do
+    test "ActiveStorage.queues[:purge] is :active_storage_purge by default in 6.0" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.0"'
+
       app "development"
 
       assert_equal :active_storage_purge, ActiveStorage.queues[:purge]
+    end
+
+    test "ActiveStorage.queues[:purge] is nil by default in 6.1" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.1"'
+
+      app "development"
+
+      assert_nil ActiveStorage.queues[:purge]
     end
 
     test "ActiveStorage.queues[:purge] is nil without Rails 6 defaults" do
@@ -2475,6 +2717,20 @@ module ApplicationTests
       app "development"
 
       assert_nil ActiveStorage.queues[:purge]
+    end
+
+    test "ActiveStorage.queues[:mirror] is nil without Rails 6 defaults" do
+      remove_from_config '.*config\.load_defaults.*\n'
+
+      app "development"
+
+      assert_nil ActiveStorage.queues[:mirror]
+    end
+
+    test "ActiveStorage.queues[:mirror] is nil by default" do
+      app "development"
+
+      assert_nil ActiveStorage.queues[:mirror]
     end
 
     test "ActionCable.server.config.cable is set when missing configuration for the current environment" do
@@ -2524,10 +2780,22 @@ module ApplicationTests
       assert_equal 14.days, ActionMailbox.incinerate_after
     end
 
-    test "ActionMailbox.queues[:incineration] is :action_mailbox_incineration by default" do
+    test "ActionMailbox.queues[:incineration] is :action_mailbox_incineration by default in 6.0" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.0"'
+
       app "development"
 
       assert_equal :action_mailbox_incineration, ActionMailbox.queues[:incineration]
+    end
+
+    test "ActionMailbox.queues[:incineration] is nil by default in 6.1" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.1"'
+
+      app "development"
+
+      assert_nil ActionMailbox.queues[:incineration]
     end
 
     test "ActionMailbox.queues[:incineration] can be configured" do
@@ -2540,10 +2808,22 @@ module ApplicationTests
       assert_equal :another_queue, ActionMailbox.queues[:incineration]
     end
 
-    test "ActionMailbox.queues[:routing] is :action_mailbox_routing by default" do
+    test "ActionMailbox.queues[:routing] is :action_mailbox_routing by default in 6.0" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.0"'
+
       app "development"
 
       assert_equal :action_mailbox_routing, ActionMailbox.queues[:routing]
+    end
+
+    test "ActionMailbox.queues[:routing] is nil by default in 6.1" do
+      remove_from_config '.*config\.load_defaults.*\n'
+      add_to_config 'config.load_defaults "6.1"'
+
+      app "development"
+
+      assert_nil ActionMailbox.queues[:routing]
     end
 
     test "ActionMailbox.queues[:routing] can be configured" do

@@ -23,7 +23,8 @@ class TranslationHelperTest < ActiveSupport::TestCase
           found_yield_single_argument: { foo: "Foo" },
           found_yield_block: { foo: "Foo" },
           array: { foo: { bar: "Foo Bar" } },
-          default: { foo: "Foo" }
+          default: { foo: "Foo" },
+          partial: { foo: "Partial foo" }
         },
         foo: "Foo",
         hello: "<a>Hello World</a>",
@@ -69,6 +70,22 @@ class TranslationHelperTest < ActiveSupport::TestCase
       localize @time, locale: "en"
     end
     assert_equal "Tue, 08 Jul 2008 12:18:38 +0000", localize(@time, locale: "en")
+  end
+
+  def test_converts_key_to_string_as_necessary
+    key = Struct.new(:to_s).new("translations.foo")
+    assert_equal "Foo", translate(key)
+    assert_equal key, translate(:"translations.missing", default: key)
+  end
+
+  def test_returns_nil_for_nil_key_without_default
+    assert_nil translate(nil)
+  end
+
+  def test_returns_default_for_nil_key_with_default
+    assert_equal "Foo", translate(nil, default: "Foo")
+    assert_equal "Foo", translate(nil, default: :"translations.foo")
+    assert_predicate translate(nil, default: :"translations.html"), :html_safe?
   end
 
   def test_returns_missing_translation_message_without_span_wrap
@@ -158,6 +175,14 @@ class TranslationHelperTest < ActiveSupport::TestCase
 
   def test_finds_translation_scoped_by_partial_yielding_single_argument_block
     assert_equal "Foo", view.render(template: "translations/templates/found_yield_single_argument").strip
+  end
+
+  def test_finds_lazy_translation_scoped_by_partial
+    assert_equal "Partial foo", view.render(template: "translations/templates/partial_lazy_translation").strip
+  end
+
+  def test_finds_lazy_translation_scoped_by_partial_with_block
+    assert_equal "Partial foo", view.render(template: "translations/templates/partial_lazy_translation_block").strip
   end
 
   def test_finds_translation_scoped_by_partial_yielding_translation_and_key

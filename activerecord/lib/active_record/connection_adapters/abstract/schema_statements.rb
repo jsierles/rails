@@ -523,7 +523,7 @@ module ActiveRecord
       # <tt>:primary_key</tt>, <tt>:string</tt>, <tt>:text</tt>,
       # <tt>:integer</tt>, <tt>:bigint</tt>, <tt>:float</tt>, <tt>:decimal</tt>, <tt>:numeric</tt>,
       # <tt>:datetime</tt>, <tt>:time</tt>, <tt>:date</tt>,
-      # <tt>:binary</tt>, <tt>:boolean</tt>.
+      # <tt>:binary</tt>, <tt>:blob</tt>, <tt>:boolean</tt>.
       #
       # You may use a type not in this list as long as it is supported by your
       # database (for example, "polygon" in MySQL), but this will not be database
@@ -532,7 +532,7 @@ module ActiveRecord
       # Available options are (none of these exists by default):
       # * <tt>:limit</tt> -
       #   Requests a maximum column length. This is the number of characters for a <tt>:string</tt> column
-      #   and number of bytes for <tt>:text</tt>, <tt>:binary</tt>, and <tt>:integer</tt> columns.
+      #   and number of bytes for <tt>:text</tt>, <tt>:binary</tt>, <tt>:blob</tt>, and <tt>:integer</tt> columns.
       #   This option is ignored by some backends.
       # * <tt>:default</tt> -
       #   The column's default value. Use +nil+ for +NULL+.
@@ -1387,8 +1387,14 @@ module ActiveRecord
 
           checks = []
 
+          if !options.key?(:name) && column_name.is_a?(String) && /\W/.match?(column_name)
+            options[:name] = index_name(table_name, column_name)
+            column_names = []
+          else
+            column_names = index_column_names(column_name || options[:column])
+          end
+
           checks << lambda { |i| i.name == options[:name].to_s } if options.key?(:name)
-          column_names = index_column_names(column_name || options[:column])
 
           if column_names.present?
             checks << lambda { |i| index_name(table_name, i.columns) == index_name(table_name, column_names) }

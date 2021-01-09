@@ -291,6 +291,8 @@ public_gcs:
 
 Make sure your buckets are properly configured for public access. See docs on how to enable public read permissions for [Amazon S3](https://docs.aws.amazon.com/AmazonS3/latest/user-guide/block-public-access-bucket.html), [Google Cloud Storage](https://cloud.google.com/storage/docs/access-control/making-data-public#buckets), and [Microsoft Azure](https://docs.microsoft.com/en-us/azure/storage/blobs/storage-manage-access-to-resources#set-container-public-access-level-in-the-azure-portal) storage services.
 
+When converting an existing application to use `public: true`, make sure to update every individual file in the bucket to be publicly-readable before switching over.
+
 Attaching Files to Records
 --------------------------
 
@@ -470,7 +472,7 @@ Generate a permanent URL for the blob that points to the application. Upon
 access, a redirect to the actual service endpoint is returned. This indirection
 decouples the service URL from the actual one, and allows, for example, mirroring
 attachments in different services for high-availability. The redirection has an
-HTTP expiration of 5 min.
+HTTP expiration of 5 minutes.
 
 ```ruby
 url_for(user.avatar)
@@ -495,7 +497,7 @@ to "attachment" for some kind of files. To change this behaviour see the
 available configuration options in [Configuring Rails Applications](configuring.html#configuring-active-storage).
 
 If you need to create a link from outside of controller/view context (Background
-jobs, Cronjobs, etc.), you can access the rails_blob_path like this:
+jobs, Cronjobs, etc.), you can access the `rails_blob_path` like this:
 
 ```ruby
 Rails.application.routes.url_helpers.rails_blob_path(user.avatar, only_path: true)
@@ -531,13 +533,46 @@ It's important to know that the file is not yet available in the `after_create` 
 Analyzing Files
 ---------------
 
-Active Storage [analyzes](https://api.rubyonrails.org/classes/ActiveStorage/Blob/Analyzable.html#method-i-analyze) files once they've been uploaded by queuing a job in Active Job. Analyzed files will store additional information in the metadata hash, including `analyzed: true`. You can check whether a blob has been analyzed by calling [`analyzed?`][] on it.
+Active Storage analyzes files once they've been uploaded by queuing a job in Active Job. Analyzed files will store additional information in the metadata hash, including `analyzed: true`. You can check whether a blob has been analyzed by calling [`analyzed?`][] on it.
 
 Image analysis provides `width` and `height` attributes. Video analysis provides these, as well as `duration`, `angle`, and `display_aspect_ratio`.
 
 Analysis requires the `mini_magick` gem. Video analysis also requires the [FFmpeg](https://www.ffmpeg.org/) library, which you must include separately.
 
 [`analyzed?`]: https://api.rubyonrails.org/classes/ActiveStorage/Blob/Analyzable.html#method-i-analyzed-3F
+
+Displaying Images, Videos, and PDFs
+---------------
+
+Active Storage supports representing a variety of files. You can call
+[`representation`][] on an attachment to display an image variant, or a
+preview of a video or PDF. Before calling `representation`, check if the
+attachment can be represented by calling [`representable?`]. Some file formats
+can't be previewed by ActiveStorage out of the box (eg. Word documents); if
+`representable?` returns false you may want to [link to](#linking-to-files)
+the file instead.
+
+```erb
+<ul>
+  <% @message.files.each do |file| %>
+    <li>
+      <% if file.representable? %>
+        <%= image_tag file.representation(resize_to_limit: [100, 100]) %>
+      <% else %>
+        <%= link_to rails_blob_path(file, disposition: "attachment") do %>
+          <%= image_tag "placeholder.png", alt: "Download file" %>
+        <% end %>
+      <% end %>
+    </li>
+  <% end %>
+</ul>
+```
+
+Internally, `representation` calls `variant` for images, and `preview` for
+previewable files. You can also call these methods directly.
+
+[`representable?`]: https://api.rubyonrails.org/classes/ActiveStorage/Blob/Representable.html#method-i-representable-3F
+[`representation`]: https://api.rubyonrails.org/classes/ActiveStorage/Blob/Representable.html#method-i-representation
 
 Transforming Files
 ------------------
@@ -548,21 +583,20 @@ To enable image variants, add the `image_processing` gem to your `Gemfile`:
 gem 'image_processing'
 ```
 
-To create a variation of an image, call [`variant`][] on the attachment. You can pass any transformation to the method supported by the processor. The default processor for Active Storage is MiniMagick, but you can also use [Vips](https://www.rubydoc.info/gems/ruby-vips/Vips/Image).
-
-When the browser hits the variant URL, Active Storage will lazily transform the
-original blob into the specified format and redirect to its new service
+To create a variation of an image, call [`variant`][] on the attachment. You
+can pass any transformation supported by the variant processor to the method.
+When the browser hits the variant URL, Active Storage will lazily transform
+the original blob into the specified format and redirect to its new service
 location.
 
 ```erb
 <%= image_tag user.avatar.variant(resize_to_limit: [100, 100]) %>
 ```
 
-To switch to the Vips processor, you would add the following to
-`config/application.rb`:
+The default processor for Active Storage is MiniMagick, but you can also use
+[Vips][]. To switch to Vips, add the following to `config/application.rb`:
 
 ```ruby
-# Use Vips for processing variants.
 config.active_storage.variant_processor = :vips
 ```
 
@@ -595,9 +629,9 @@ end
 ```
 
 [`variant`]: https://api.rubyonrails.org/classes/ActiveStorage/Blob/Representable.html#method-i-variant
+[Vips]: https://www.rubydoc.info/gems/ruby-vips/Vips/Image
 
-Previewing Files
-----------------
+### Previewing Files
 
 Some non-image files can be previewed: that is, they can be presented as images.
 For example, a video file can be previewed by extracting its first frame. Out of
@@ -605,22 +639,20 @@ the box, Active Storage supports previewing videos and PDF documents. To create
 a link to a lazily-generated preview, use the attachment's [`preview`][] method:
 
 ```erb
-<ul>
-  <% @message.files.each do |file| %>
-    <li>
-      <%= image_tag file.preview(resize_to_limit: [100, 100]) %>
-    </li>
-  <% end %>
-</ul>
+<%= image_tag message.video.preview(resize_to_limit: [100, 100]) %>
 ```
 
-WARNING: Extracting previews requires third-party applications, FFmpeg v3.4+ for
+To add support for another format, add your own previewer. See the
+[`ActiveStorage::Preview`][] documentation for more information.
+
+WARNING: Extracting previews requires third-party applications: FFmpeg v3.4+ for
 video and muPDF for PDFs, and on macOS also XQuartz and Poppler.
 These libraries are not provided by Rails. You must install them yourself to
 use the built-in previewers. Before you install and use third-party software,
 make sure you understand the licensing implications of doing so.
 
 [`preview`]: https://api.rubyonrails.org/classes/ActiveStorage/Blob/Representable.html#method-i-preview
+[`ActiveStorage::Preview`]: https://api.rubyonrails.org/classes/ActiveStorage/Preview.html
 
 Direct Uploads
 --------------
@@ -636,7 +668,6 @@ directly from the client to the cloud.
 
     ```js
     //= require activestorage
-
     ```
 
     Using the npm package:
@@ -646,13 +677,13 @@ directly from the client to the cloud.
     ActiveStorage.start()
     ```
 
-2. Add `direct_upload: true` to your [`file_field`](form_helpers.html#uploading-files).
+2. Add `direct_upload: true` to your [file field](form_helpers.html#uploading-files):
 
     ```erb
     <%= form.file_field :attachments, multiple: true, direct_upload: true %>
     ```
-    
-    If you aren't using a [FormBuilder](form_helpers.html#customizing-form-builders), add the data attribute directly:
+
+    Or, if you aren't using a `FormBuilder`, add the data attribute directly:
 
     ```erb
     <input type=file data-direct-upload-url="<%= rails_direct_uploads_url %>" />

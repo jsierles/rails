@@ -591,7 +591,7 @@ module ActiveRecord
         def extract_value_from_default(default)
           case default
             # Quoted types
-          when /\A[\(B]?'(.*)'.*::"?([\w. ]+)"?(?:\[\])?\z/m
+          when /\A[(B]?'(.*)'.*::"?([\w. ]+)"?(?:\[\])?\z/m
             # The default 'now'::date is CURRENT_DATE
             if $1 == "now" && $2 == "date"
               nil
@@ -624,21 +624,25 @@ module ActiveRecord
 
         def load_additional_types(oids = nil)
           initializer = OID::TypeMapInitializer.new(type_map)
+          load_types_queries(initializer, oids) do |query|
+            execute_and_clear(query, "SCHEMA", []) do |records|
+              initializer.run(records)
+            end
+          end
+        end
 
+        def load_types_queries(initializer, oids)
           query = <<~SQL
             SELECT t.oid, t.typname, t.typelem, t.typdelim, t.typinput, r.rngsubtype, t.typtype, t.typbasetype
             FROM pg_type as t
             LEFT JOIN pg_range as r ON oid = rngtypid
           SQL
-
           if oids
-            query += "WHERE t.oid IN (%s)" % oids.join(", ")
+            yield query + "WHERE t.oid IN (%s)" % oids.join(", ")
           else
-            query += initializer.query_conditions_for_initial_load
-          end
-
-          execute_and_clear(query, "SCHEMA", []) do |records|
-            initializer.run(records)
+            yield query + initializer.query_conditions_for_known_type_names
+            yield query + initializer.query_conditions_for_known_type_types
+            yield query + initializer.query_conditions_for_array_types
           end
         end
 
