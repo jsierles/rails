@@ -35,6 +35,7 @@ You can find a list of all released Rails versions [here](https://rubygems.org/g
 
 Rails generally stays close to the latest released Ruby version when it's released:
 
+* Rails 7 requires Ruby 2.7.0 or newer.
 * Rails 6 requires Ruby 2.5.0 or newer.
 * Rails 5 requires Ruby 2.2.2 or newer.
 * Rails 4 prefers Ruby 2.0 and requires 1.9.3 or newer.
@@ -72,8 +73,30 @@ The new Rails version might have different configuration defaults than the previ
 
 To allow you to upgrade to new defaults one by one, the update task has created a file `config/initializers/new_framework_defaults.rb`. Once your application is ready to run with new defaults, you can remove this file and flip the `config.load_defaults` value.
 
-Upgrading from Rails 6.1 to Rails 6.2
+Upgrading from Rails 6.1 to Rails 7.0
 -------------------------------------
+
+### `ActionDispatch::Request#content_type` now returned Content-Type header as it is.
+
+Previously, `ActionDispatch::Request#content_type` returned value does NOT contain charset part.
+This behavior changed to returned Content-Type header containing charset part as it is.
+
+If you want just MIME type, please use `ActionDispatch::Request#media_type` instead.
+
+Before:
+
+```ruby
+request = ActionDispatch::Request.new("CONTENT_TYPE" => "text/csv; header=present; charset=utf-16", "REQUEST_METHOD" => "GET")
+request.content_type #=> "text/csv"
+```
+
+After:
+
+```ruby
+request = ActionDispatch::Request.new("Content-Type" => "text/csv; header=present; charset=utf-16", "REQUEST_METHOD" => "GET")
+request.content_type #=> "text/csv; header=present; charset=utf-16"
+request.media_type   #=> "text/csv"
+```
 
 ### Key generator digest class changing to use SHA256
 

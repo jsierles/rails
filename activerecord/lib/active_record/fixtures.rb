@@ -426,7 +426,7 @@ module ActiveRecord
   #   _fixture:
   #     ignore:
   #       - base
-  #     # or use "ignore: base" when there is only one fixture needs to be ignored.
+  #     # or use "ignore: base" when there is only one fixture that needs to be ignored.
   #
   #   base: &base
   #     admin: false
@@ -782,3 +782,5 @@ module ActiveRecord
     end
   end
 end
+
+ActiveSupport.run_load_hooks :active_record_fixture_set, ActiveRecord::FixtureSet

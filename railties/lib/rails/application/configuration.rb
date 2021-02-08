@@ -199,11 +199,16 @@ module Rails
           end
 
           ActiveSupport.utc_to_local_returns_utc_offset_times = true
-        when "6.2"
+        when "7.0"
           load_defaults "6.1"
+
+          if respond_to?(:action_dispatch)
+            action_dispatch.return_only_request_media_type_on_content_type = false
+          end
 
           if respond_to?(:action_view)
             action_view.button_to_generates_button_tag = true
+            action_view.apply_stylesheet_media_default = false
           end
 
           if respond_to?(:active_support)
