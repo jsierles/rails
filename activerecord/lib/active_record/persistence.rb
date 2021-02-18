@@ -382,6 +382,10 @@ module ActiveRecord
           constraints << default_scoped(all_queries: true).where_clause.ast
         end
 
+        if current_scope = self.global_current_scope
+          constraints << current_scope.where_clause.ast
+        end
+
         um = arel_table.where(
           constraints.reduce(&:and)
         ).compile_update(_substitute_values(values), primary_key)
@@ -394,6 +398,10 @@ module ActiveRecord
 
         if default_scopes?(all_queries: true)
           constraints << default_scoped(all_queries: true).where_clause.ast
+        end
+
+        if current_scope = self.global_current_scope
+          constraints << current_scope.where_clause.ast
         end
 
         dm = Arel::DeleteManager.new
@@ -679,14 +687,14 @@ module ActiveRecord
         verify_readonly_attribute(name) || name
       end
 
-      id_in_database = self.id_in_database
+      update_constraints = _primary_key_constraints_hash
       attributes.each do |k, v|
         write_attribute_without_type_cast(k, v)
       end
 
       affected_rows = self.class._update_record(
         attributes,
-        @primary_key => id_in_database
+        update_constraints
       )
 
       affected_rows == 1
@@ -808,7 +816,7 @@ module ActiveRecord
     def reload(options = nil)
       self.class.connection.clear_query_cache
 
-      fresh_object = if self.class.default_scopes?(all_queries: true) && !(options && options[:unscoped])
+      fresh_object = if apply_scoping?(options)
         _find_record(options)
       else
         self.class.unscoped { _find_record(options) }
@@ -880,6 +888,15 @@ module ActiveRecord
       end
     end
 
+    def apply_scoping?(options)
+      !(options && options[:unscoped]) &&
+        (self.class.default_scopes?(all_queries: true) || self.class.global_current_scope)
+    end
+
+    def _primary_key_constraints_hash
+      { @primary_key => id_in_database }
+    end
+
     # A hook to be overridden by association modules.
     def destroy_associations
     end
@@ -889,7 +906,7 @@ module ActiveRecord
     end
 
     def _delete_row
-      self.class._delete_record(@primary_key => id_in_database)
+      self.class._delete_record(_primary_key_constraints_hash)
     end
 
     def _touch_row(attribute_names, time)
@@ -905,7 +922,7 @@ module ActiveRecord
     def _update_row(attribute_names, attempted_action = "update")
       self.class._update_record(
         attributes_with_values(attribute_names),
-        @primary_key => id_in_database
+        _primary_key_constraints_hash
       )
     end
 

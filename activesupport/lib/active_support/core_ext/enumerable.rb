@@ -16,6 +16,22 @@ module Enumerable
 
   # :startdoc:
 
+  # Calculates the minimum from the extracted elements.
+  #
+  # payments = [Payment.new(5), Payment.new(15), Payment.new(10)]
+  # payments.minimum(:price) # => 5
+  def minimum(key)
+    map(&key).min
+  end
+
+  # Calculates the maximum from the extracted elements.
+  #
+  # payments = [Payment.new(5), Payment.new(15), Payment.new(10)]
+  # payments.maximum(:price) # => 15
+  def maximum(key)
+    map(&key).max
+  end
+
   # Calculates a sum from the elements.
   #
   #  payments.sum { |p| p.price * p.tax_rate }
@@ -136,11 +152,7 @@ module Enumerable
     elements.flatten!(1)
     reject { |element| elements.include?(element) }
   end
-
-  # Alias for #excluding.
-  def without(*elements)
-    excluding(*elements)
-  end
+  alias :without :excluding
 
   # Extract the given key from each element in the enumerable.
   #

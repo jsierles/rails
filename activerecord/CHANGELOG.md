@@ -1,3 +1,132 @@
+*   Add `ActiveRecord::Relation#load_async`.
+
+    This method schedules the query to be performed asynchronously from a thread pool.
+
+    If the result is accessed before a background thread had the opportunity to perform
+    the query, it will be performed in the foreground.
+
+    This is useful for queries that can be performed long enough before their result will be
+    needed, or for controllers which need to perform several independant queries.
+
+    ```ruby
+    def index
+      @categories = Category.some_complex_scope.load_async
+      @posts = Post.some_complex_scope.load_async
+    end
+    ```
+
+    *Jean Boussier*
+
+*   Implemented `ActiveRecord::Relation#excluding` method.
+
+    This method excludes the specified record (or collection of records) from
+    the resulting relation:
+
+    ```ruby
+    Post.excluding(post)
+    Post.excluding(post_one, post_two)
+    ```
+
+    Also works on associations:
+
+    ```ruby
+    post.comments.excluding(comment)
+    post.comments.excluding(comment_one, comment_two)
+    ```
+
+    This is short-hand for `Post.where.not(id: post.id)` (for a single record)
+    and `Post.where.not(id: [post_one.id, post_two.id])` (for a collection).
+
+    *Glen Crawford*
+
+*   Skip optimised #exist? query when #include? is called on a relation
+    with a having clause
+
+    Relations that have aliased select values AND a having clause that
+    references an aliased select value would generate an error when
+    #include? was called, due to an optimisation that would generate
+    call #exists? on the relation instead, which effectively alters
+    the select values of the query (and thus removes the aliased select
+    values), but leaves the having clause intact. Because the having
+    clause is then referencing an aliased column that is no longer
+    present in the simplified query, an ActiveRecord::InvalidStatement
+    error was raised.
+
+    An sample query affected by this problem:
+
+    ```ruby
+    Author.select('COUNT(*) as total_posts', 'authors.*')
+          .joins(:posts)
+          .group(:id)
+          .having('total_posts > 2')
+          .include?(Author.first)
+    ```
+
+    This change adds an addition check to the condition that skips the
+    simplified #exists? query, which simply checks for the presence of
+    a having clause.
+
+    Fixes #41417
+
+    *Michael Smart*
+
+*   Increment postgres prepared statement counter before making a prepared statement, so if the statement is aborted
+    without Rails knowledge (e.g., if app gets kill -9d during long-running query or due to Rack::Timeout), app won't end
+    up in perpetual crash state for being inconsistent with Postgres.
+
+    *wbharding*, *Martin Tepper*
+
+*   Add ability to apply `scoping` to `all_queries`.
+
+    Some applications may want to use the `scoping` method but previously it only
+    worked on certain types of queries. This change allows the `scoping` method to apply
+    to all queries for a model in a block.
+
+    ```ruby
+    Post.where(blog_id: post.blog_id).scoping(all_queries: true) do
+      post.update(title: "a post title") # adds `posts.blog_id = 1` to the query
+    end
+    ```
+
+    *Eileen M. Uchitelle*
+
+*   `ActiveRecord::Calculations.calculate` called with `:average`
+    (aliased as `ActiveRecord::Calculations.average`) will now use column based
+    type casting. This means that floating point number columns will now be
+    aggregated as `Float` and decimal columns will be aggregated as `BigDecimal`.
+
+    Integers are handled as a special case returning `BigDecimal` always
+    (this was the case before already).
+
+    ```ruby
+    # With the following schema:
+    create_table "measurements" do |t|
+      t.float "temperature"
+    end
+
+    # Before:
+    Measurement.average(:temperature).class
+    # => BigDecimal
+
+    # After:
+    Measurement.average(:temperature).class
+    # => Float
+    ```
+
+    Before this change, Rails just called `to_d` on average aggregates from the
+    database adapter. This is not the case anymore. If you relied on that kind
+    of magic, you now need to register your own `ActiveRecord::Type`
+    (see `ActiveRecord::Attributes::ClassMethods` for documentation).
+
+    *Josua Schmid*
+
+*   PostgreSQL: handle `timestamp with time zone` columns correctly in `schema.rb`.
+
+    Previously they dumped as `t.datetime :column_name`, now they dump as `t.timestamptz :column_name`,
+    and are created as `timestamptz` columns when the schema is loaded.
+
+    *Alex Ghiculescu*
+
 *   Removing trailing whitespace when matching columns in
     `ActiveRecord::Sanitization.disallow_raw_sql!`.
 

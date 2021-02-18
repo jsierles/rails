@@ -186,11 +186,9 @@ module ActiveRecord
         detect_enum_conflict!(name, name)
         detect_enum_conflict!(name, "#{name}=")
 
-        attr = attribute_alias?(name) ? attribute_alias(name) : name
-
-        attribute(attr, **options) do |subtype|
+        attribute(name, **options) do |subtype|
           subtype = subtype.subtype if EnumType === subtype
-          EnumType.new(attr, enum_values, subtype)
+          EnumType.new(name, enum_values, subtype)
         end
 
         value_method_names = []
@@ -264,7 +262,7 @@ module ActiveRecord
       end
 
       def assert_valid_enum_definition_values(values)
-        unless values.is_a?(Hash) || values.all? { |v| v.is_a?(Symbol) } || values.all? { |v| v.is_a?(String) }
+        unless values.is_a?(Hash) || values.all?(Symbol) || values.all?(String)
           error_message = <<~MSG
             Enum values #{values} must be either a hash, an array of symbols, or an array of strings.
           MSG

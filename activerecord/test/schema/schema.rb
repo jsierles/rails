@@ -226,6 +226,7 @@ ActiveRecord::Schema.define do
     t.datetime :updated_at
     t.datetime :deleted_at
     t.integer :comments
+    t.integer :company
   end
 
   create_table :companies, force: true do |t|
@@ -803,6 +804,11 @@ ActiveRecord::Schema.define do
     t.integer :indestructible_tags_count, default: 0
     t.integer :tags_with_destroy_count, default: 0
     t.integer :tags_with_nullify_count, default: 0
+  end
+
+  create_table :postesques, force: true do |t|
+    t.string :author_name
+    t.string :author_id
   end
 
   create_table :serialized_posts, force: true do |t|

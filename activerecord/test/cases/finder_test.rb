@@ -412,6 +412,15 @@ class FinderTest < ActiveRecord::TestCase
     assert_equal true,  Customer.order(id: :desc).limit(2).include?(mary)
   end
 
+  def test_include_on_unloaded_relation_with_having_referencing_aliased_select
+    skip if current_adapter?(:PostgreSQLAdapter)
+    bob = authors(:bob)
+    mary = authors(:mary)
+
+    assert_equal false, Author.select("COUNT(*) as total_posts", "authors.*").joins(:posts).group(:id).having("total_posts > 2").include?(bob)
+    assert_equal true, Author.select("COUNT(*) as total_posts", "authors.*").joins(:posts).group(:id).having("total_posts > 2").include?(mary)
+  end
+
   def test_include_on_loaded_relation_with_match
     customers = Customer.where(name: "David").load
     david     = customers(:david)
@@ -1058,7 +1067,7 @@ class FinderTest < ActiveRecord::TestCase
   end
 
   def test_find_on_association_proxy_conditions
-    assert_equal [1, 2, 3, 5, 6, 7, 8, 9, 10, 12], Comment.where(post_id: authors(:david).posts).map(&:id).sort
+    assert_equal [1, 2, 3, 5, 6, 7, 8, 9, 10, 12, 13], Comment.where(post_id: authors(:david).posts).map(&:id).sort
   end
 
   def test_find_on_hash_conditions_with_range
@@ -1458,8 +1467,8 @@ class FinderTest < ActiveRecord::TestCase
   end
 
   def test_select_values
-    assert_equal ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11"], Company.connection.select_values("SELECT id FROM companies ORDER BY id").map!(&:to_s)
-    assert_equal ["37signals", "Summit", "Microsoft", "Flamboyant Software", "Ex Nihilo", "RailsCore", "Leetsoft", "Jadedpixel", "Odegy", "Ex Nihilo Part Deux", "Apex"], Company.connection.select_values("SELECT name FROM companies ORDER BY id")
+    assert_equal ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "15"], Company.connection.select_values("SELECT id FROM companies ORDER BY id").map!(&:to_s)
+    assert_equal ["37signals", "Summit", "Microsoft", "Flamboyant Software", "Ex Nihilo", "RailsCore", "Leetsoft", "Jadedpixel", "Odegy", "Ex Nihilo Part Deux", "Apex", "RVshare"], Company.connection.select_values("SELECT name FROM companies ORDER BY id")
   end
 
   def test_select_rows
